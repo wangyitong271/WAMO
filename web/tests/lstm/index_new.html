@@ -1,0 +1,569 @@
+<!-- filepath: f:\code\WasmCrypt\web\tests\lstm\index.html -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>LSTM 股票预测</title>
+    <!-- 引入 Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* 简单的样式调整 */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+
+        input,
+        button {
+            padding: 10px;
+            margin: 5px 0;
+        }
+
+        #myChart {
+            max-width: 800px;
+            max-height: 400px;
+            margin-top: 20px;
+        }
+        
+        /* 新增分析结果容器样式 */
+        .analysis-container {
+            margin-top: 30px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        
+        .analysis-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .analysis-item {
+            margin: 5px 0;
+            padding: 3px 0;
+            border-bottom: 1px dotted #eee;
+        }
+        
+        .analysis-value {
+            font-weight: bold;
+            color: #0066cc;
+        }
+        
+        .analysis-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>LSTM 股票预测</h1>
+    <label for="input">输入前百分比的数据</label>
+    <div style="position: relative; display: inline-block;">
+        <input type="number" id="input" value="15" min="10" max="100" style="padding-right: 20px;">
+        <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%);">%</span>
+    </div>
+    <button onclick="test()">测试</button>
+
+
+    <!-- 添加 Canvas 元素用于图表 -->
+    <canvas id="myChart" width="800" height="400"></canvas>
+    
+    <!-- 模型安全分析结果显示区域 -->
+    <div class="analysis-container">
+        <div class="analysis-title">WebAssembly模型安全动态分析</div>
+        <div class="analysis-grid">
+            <div>
+                <div class="analysis-item">内存访问地址跨度: <span id="memorySpan" class="analysis-value">-</span></div>
+                <div class="analysis-item">内存访问地址范围: <span id="memoryRange" class="analysis-value">-</span></div>
+                <div class="analysis-item">唯一内存地址数量: <span id="uniqueAddresses" class="analysis-value">-</span></div>
+                <div class="analysis-item">内存利用率: <span id="memoryUtilization" class="analysis-value">-</span></div>
+            </div>
+            <div>
+                <div class="analysis-item">内存分布熵值: <span id="entropyValue" class="analysis-value">-</span></div>
+                <div class="analysis-item">地址间隔平均值: <span id="avgGap" class="analysis-value">-</span></div>
+                <div class="analysis-item">连续区域数量: <span id="contiguousRegions" class="analysis-value">-</span></div>
+                <div class="analysis-item">最大连续区块大小: <span id="maxBlock" class="analysis-value">-</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- <p>结果 (test1_js): <span id="result1"></span></p>
+    <p>结果 (read_dataset_js): <span id="result2"></span></p> -->
+
+    <script src="lstm.js"></script>
+    <script>
+        // 用于存储内存分析结果的全局变量
+        var memoryAnalysisResults = {
+            beforeState: null,
+            afterState: null,
+            changedAddresses: null
+        };
+
+        var Module = {
+            // 记录内存对象
+            memoryBase: 0,
+            memory: null,
+            
+            // 初始化完成时的回调
+            onRuntimeInitialized: function() {
+                console.log('Module loaded');
+            },
+            
+            // 内存增长回调
+            onGrowMemory: function(size) {
+                console.log("WebAssembly内存增长到: " + size + " 页");
+            },
+            
+            // 模块准备好时
+            postRun: function() {
+                console.log("WebAssembly模块已加载完成");
+                // 此时可以确保可以获取内存
+                if(Module.HEAPU8 && Module.HEAPU8.buffer) {
+                    console.log("成功获取WebAssembly内存，大小：" + (Module.HEAPU8.buffer.byteLength / 1024 / 1024).toFixed(2) + " MB");
+                }
+            }
+        };
+
+        var chart; // 用于存储 Chart.js 实例
+        
+        // 捕获内存状态函数
+        function captureMemoryState() {
+            try {
+                let memoryBuffer = null;
+                
+                // 尝试多种方式获取WebAssembly内存
+                if (Module.HEAPU8 && Module.HEAPU8.buffer) {
+                    // 最常见的情况，Emscripten通常使用HEAPU8等类型化数组
+                    memoryBuffer = Module.HEAPU8.buffer;
+                    console.log(`通过HEAPU8获取内存成功，大小: ${memoryBuffer.byteLength} bytes`);
+                } else if (Module.buffer) {
+                    // 直接buffer属性
+                    memoryBuffer = Module.buffer;
+                } else if (Module.asm && Module.asm.memory) {
+                    // WebAssembly.Memory对象
+                    memoryBuffer = Module.asm.memory.buffer;
+                } else if (Module.wasmMemory && Module.wasmMemory.buffer) {
+                    // 直接wasmMemory对象
+                    memoryBuffer = Module.wasmMemory.buffer;
+                } else if (typeof WebAssembly !== 'undefined' && WebAssembly.Memory && Module.memory instanceof WebAssembly.Memory) {
+                    memoryBuffer = Module.memory.buffer;
+                } else {
+                    console.error('无法访问WebAssembly内存，请检查控制台输出查看模块结构');
+                    console.log('Module对象属性:', Object.keys(Module));
+                    return new Uint8Array();
+                }
+                
+                if (!memoryBuffer) {
+                    console.error('无法获取有效的内存缓冲区');
+                    return new Uint8Array();
+                }
+                
+                // 创建内存快照（使用Uint8Array复制整个内存）
+                // 注意：使用slice(0)复制整个内存区域，避免引用原始缓冲区
+                const memorySnapshot = new Uint8Array(memoryBuffer.slice(0));
+                
+                console.log(`内存快照捕获成功: ${memorySnapshot.length} bytes`);
+                return memorySnapshot;
+            } catch (err) {
+                console.error('捕获内存状态失败:', err, err.stack);
+                return new Uint8Array();
+            }
+        }
+        
+        // 分析内存变化函数
+        function analyzeMemoryChanges(before, after) {
+            try {
+                // 检查内存快照是否捕获成功
+                if (!before || !after) {
+                    console.error('缺少完整的内存状态数据');
+                    return { 
+                        changedAddresses: [],
+                        stats: {
+                            addressCount: 0,
+                            minAddress: 0,
+                            maxAddress: 0,
+                            memorySpan: 0,
+                            uniqueAddresses: 0,
+                            utilization: 0
+                        }
+                    };
+                }
+                
+                const length = Math.min(before.length, after.length);
+                console.log(`内存分析: 执行前 ${before.length} bytes, 执行后 ${after.length} bytes`);
+                
+                // 寻找变化的地址
+                const changedAddresses = [];
+                let minAddress = Number.MAX_SAFE_INTEGER;
+                let maxAddress = 0;
+                
+                // 使用Set收集唯一的变化地址，更高效且自动去重
+                const uniqueAddresses = new Set();
+                
+                // 为了提高性能，限制处理量，每10个字节采样一个
+                // 这对于大型内存是必要的，可以根据实际情况调整采样率
+                const samplingRate = length > 10000000 ? 10 : 1;
+                
+                for (let i = 0; i < length; i += samplingRate) {
+                    if (before[i] !== after[i]) {
+                        // 为了避免内存爆炸，只存储有限数量的变化地址
+                        if (changedAddresses.length < 10000) {
+                            changedAddresses.push(i);
+                        }
+                        // 将变化的地址添加到唯一地址集合
+                        uniqueAddresses.add(i);
+                        
+                        if (i < minAddress) minAddress = i;
+                        if (i > maxAddress) maxAddress = i;
+                    }
+                }
+                
+                const addressCount = uniqueAddresses.size;
+                const memorySpan = addressCount > 0 ? (maxAddress - minAddress + 1) : 0;
+                const utilization = memorySpan > 0 ? (addressCount / memorySpan) : 0;
+                
+                console.log(`内存分析完成:`);
+                console.log(`- 变化地址数: ${addressCount} (采样率 ${samplingRate})`);
+                console.log(`- 内存访问地址跨度: ${memorySpan} bytes`);
+                console.log(`- 内存访问地址范围: ${minAddress} - ${maxAddress}`);
+                console.log(`- 唯一内存地址访问数量: ${addressCount}`);
+                console.log(`- 内存利用率: ${(utilization * 100).toFixed(2)}%`);
+                
+                return {
+                    changedAddresses,
+                    stats: {
+                        addressCount,
+                        minAddress: minAddress === Number.MAX_SAFE_INTEGER ? 0 : minAddress,
+                        maxAddress,
+                        memorySpan,
+                        uniqueAddresses: addressCount,
+                        utilization
+                    }
+                };
+            } catch (err) {
+                console.error('分析内存变化失败:', err);
+                return { 
+                    changedAddresses: [],
+                    stats: {
+                        addressCount: 0,
+                        minAddress: 0,
+                        maxAddress: 0,
+                        memorySpan: 0,
+                        uniqueAddresses: 0,
+                        utilization: 0
+                    }
+                };
+            }
+        }
+        
+        // 分析内存分布熵函数
+        function analyzeMemoryDistribution(changedAddresses, memorySize) {
+            if (!changedAddresses || changedAddresses.length === 0) {
+                return { entropy: 0, normalizedEntropy: 0 };
+            }
+            
+            // 将内存空间划分为多个桶(bin)
+            const binCount = Math.min(256, Math.ceil(memorySize / 1024)); // 最多256个桶
+            const binSize = Math.ceil(memorySize / binCount);
+            const bins = new Array(binCount).fill(0);
+            
+            // 统计每个桶中的地址数量
+            changedAddresses.forEach(address => {
+                const binIndex = Math.floor(address / binSize);
+                if (binIndex < binCount) {
+                    bins[binIndex]++;
+                }
+            });
+            
+            // 计算熵值
+            let entropy = 0;
+            const totalAddresses = changedAddresses.length;
+            
+            bins.forEach(count => {
+                if (count > 0) {
+                    const probability = count / totalAddresses;
+                    entropy -= probability * Math.log2(probability);
+                }
+            });
+            
+            // 计算归一化熵值 (0-1范围)
+            const maxEntropy = Math.log2(binCount);
+            const normalizedEntropy = maxEntropy > 0 ? entropy / maxEntropy : 0;
+            
+            console.log(`内存分布熵: ${entropy.toFixed(4)}`);
+            console.log(`归一化熵值: ${normalizedEntropy.toFixed(4)}`);
+            
+            // 分析结论
+            let conclusion = '';
+            if (normalizedEntropy > 0.8) {
+                conclusion = '高度随机分布 (内存地址高度分散，权重可能已被混淆)';
+            } else if (normalizedEntropy > 0.5) {
+                conclusion = '中度随机分布 (内存地址有一定规律但仍较分散)';
+            } else if (normalizedEntropy > 0.3) {
+                conclusion = '低度随机分布 (内存地址分布有规律性)';
+            } else {
+                conclusion = '高度规律分布 (内存地址集中，几乎没有混淆)';
+            }
+            console.log(`分析结论: ${conclusion}`);
+            
+            return { entropy, normalizedEntropy };
+        }
+        
+        // 分析地址分布模式函数
+        function analyzeAddressDistribution(changedAddresses) {
+            if (!changedAddresses || changedAddresses.length <= 1) {
+                return {
+                    avgGap: 0,
+                    medianGap: 0,
+                    contiguousRegions: 0,
+                    maxContiguousBlock: 0
+                };
+            }
+            
+            // 对地址排序
+            const sortedAddresses = [...changedAddresses].sort((a, b) => a - b);
+            
+            // 计算地址间隔
+            const gaps = [];
+            let contiguousRegions = 1;
+            let currentBlockSize = 1;
+            let maxBlockSize = 1;
+            
+            for (let i = 1; i < sortedAddresses.length; i++) {
+                const gap = sortedAddresses[i] - sortedAddresses[i-1];
+                gaps.push(gap);
+                
+                // 检查连续性
+                if (gap === 1) {
+                    currentBlockSize++;
+                } else {
+                    if (currentBlockSize > maxBlockSize) {
+                        maxBlockSize = currentBlockSize;
+                    }
+                    currentBlockSize = 1;
+                    contiguousRegions++;
+                }
+            }
+            
+            // 确保最后一个区块也被计算
+            if (currentBlockSize > maxBlockSize) {
+                maxBlockSize = currentBlockSize;
+            }
+            
+            // 计算统计值
+            const avgGap = gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length;
+            
+            // 计算中位数间隔
+            const sortedGaps = [...gaps].sort((a, b) => a - b);
+            const midIndex = Math.floor(sortedGaps.length / 2);
+            const medianGap = sortedGaps.length % 2 === 0 
+                ? (sortedGaps[midIndex - 1] + sortedGaps[midIndex]) / 2 
+                : sortedGaps[midIndex];
+            
+            console.log(`地址分布分析:`);
+            console.log(`- 平均间隔: ${avgGap.toFixed(2)} bytes`);
+            console.log(`- 中位数间隔: ${medianGap} bytes`);
+            console.log(`- 连续区域数量: ${contiguousRegions}`);
+            console.log(`- 最大连续区块: ${maxBlockSize} bytes`);
+            
+            // 判断分布模式
+            if (maxBlockSize > sortedAddresses.length * 0.8) {
+                console.log('分布模式: 高度集中 (内存访问连续性很高)');
+            } else if (avgGap < 10) {
+                console.log('分布模式: 较为集中 (内存访问较为连续)');
+            } else if (avgGap > 1000) {
+                console.log('分布模式: 高度分散 (内存访问非常随机，可能存在混淆)');
+            } else {
+                console.log('分布模式: 中度分散 (内存访问有一定随机性)');
+            }
+            
+            return {
+                avgGap,
+                medianGap,
+                contiguousRegions,
+                maxContiguousBlock: maxBlockSize
+            };
+        }
+        
+        // 更新UI上的分析结果
+        function updateAnalysisUI(memoryAnalysis, entropyResults, addressDistribution) {
+            document.getElementById('memorySpan').textContent = memoryAnalysis.stats.memorySpan + ' 字节';
+            document.getElementById('memoryRange').textContent = 
+                memoryAnalysis.stats.minAddress + ' - ' + memoryAnalysis.stats.maxAddress;
+            document.getElementById('uniqueAddresses').textContent = memoryAnalysis.stats.uniqueAddresses;
+            document.getElementById('memoryUtilization').textContent = 
+                (memoryAnalysis.stats.utilization * 100).toFixed(2) + '%';
+            
+            document.getElementById('entropyValue').textContent = 
+                entropyResults.normalizedEntropy.toFixed(4);
+            document.getElementById('avgGap').textContent = 
+                addressDistribution.avgGap.toFixed(2);
+            document.getElementById('contiguousRegions').textContent = 
+                addressDistribution.contiguousRegions;
+            document.getElementById('maxBlock').textContent = 
+                addressDistribution.maxContiguousBlock + ' 字节';
+        }
+
+        function test() {
+            // 获取输入值并转换为整数
+            var inputValue = document.getElementById('input').value;
+            var input = parseInt(inputValue, 10);
+
+            if (isNaN(input)) {
+                alert('请输入一个有效的整数');
+                return;
+            }
+            if (input < 10 || input > 100) {
+                alert('请输入一个介于10和100之间的整数');
+                return;
+            }
+
+            // 捕获推理前内存状态
+            memoryAnalysisResults.beforeState = captureMemoryState();
+            
+            // 调用 WASM 函数
+            try {
+                // 调用 test1_js(x) 函数
+                var resultArray1 = Module['test1_js'](input);
+                console.log('Result Array1 (test1_js):', resultArray1);
+
+                // 检查并显示 test1_js 的结果
+                if (Array.isArray(resultArray1)) {
+                    // document.getElementById('result1').innerText = resultArray1.join(', ');
+                } else {
+                    // document.getElementById('result1').innerText = '返回结果不是预期的数组';
+                }
+
+                // 调用 read_dataset_js(x) 函数
+                var resultArray2 = Module['read_dataset_js'](input);
+                console.log('Result Array2 (read_dataset_js):', resultArray2);
+
+                // 处理 read_dataset_js 的结果：移除前8个数据点
+                if (Array.isArray(resultArray2)) {
+                    if (resultArray2.length > 8) {
+                        var processedArray2 = [null].concat(resultArray2.slice(8));
+                        //document.getElementById('result2').innerText = processedArray2.join(', ');
+                    } else {
+                        alert('read_dataset_js 返回的数据长度不足8个，无法移除前8个数据点');
+                        return;
+                    }
+                } else {
+                    //document.getElementById('result2').innerText = '返回结果不是预期的数组';
+                }
+                
+                // 捕获推理后内存状态
+                memoryAnalysisResults.afterState = captureMemoryState();
+                
+                // 分析内存变化
+                const memoryAnalysis = analyzeMemoryChanges(
+                    memoryAnalysisResults.beforeState, 
+                    memoryAnalysisResults.afterState
+                );
+                memoryAnalysisResults.changedAddresses = memoryAnalysis.changedAddresses;
+                
+                // 进行内存分布熵分析
+                const memorySize = memoryAnalysisResults.afterState.length;
+                const entropyResults = analyzeMemoryDistribution(
+                    memoryAnalysisResults.changedAddresses, 
+                    memorySize
+                );
+                
+                // 进行地址分布模式分析
+                const addressDistribution = analyzeAddressDistribution(
+                    memoryAnalysisResults.changedAddresses
+                );
+                
+                // 更新UI显示分析结果
+                updateAnalysisUI(memoryAnalysis, entropyResults, addressDistribution);
+
+                // 绘制图表
+                drawChart(resultArray1, resultArray2.slice(7));
+            } catch (error) {
+                console.error('调用 WASM 函数时出错:', error);
+                // document.getElementById('result1').innerText = '调用失败';
+                //  document.getElementById('result2').innerText = '调用失败';
+            }
+        }
+
+        function drawChart(data1, data2) {
+            // 如果图表已经存在，先销毁它
+            if (chart) {
+                chart.destroy();
+            }
+
+            // 获取 Canvas 元素的上下文
+            var ctx = document.getElementById('myChart').getContext('2d');
+
+            // 生成 X 轴标签，取两个数据集的最小长度
+            var minLength = Math.min(data1.length, data2.length);
+            var labels = Array.from({ length: minLength }, (_, index) => index + 1);
+
+            // 截取两个数据集为相同长度
+            var plotData1 = data1.slice(0, minLength);
+            var plotData2 = data2.slice(0, minLength);
+
+            // 创建新的图表
+            chart = new Chart(ctx, {
+                type: 'line', // 图表类型，可选 'line', 'bar', 'pie', etc.
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: '预测',
+                            data: plotData1,
+                            borderColor: 'rgba(75, 192, 192, 1)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.1 // 平滑曲线
+                        },
+                        {
+                            label: '实际',
+                            data: plotData2,
+                            borderColor: 'rgba(255, 99, 132, 1)',
+                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.1 // 平滑曲线
+                        }
+                    ]
+                },
+                options: {
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: '数据点'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: '值'
+                            },
+                            beginAtZero: false
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            enabled: true
+                        }
+                    },
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+        }
+    </script>
+</body>
+
+</html>

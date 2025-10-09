@@ -1,0 +1,113 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>房间人数识别</title>
+    <script src="transformer_room.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+
+        h1 {
+            color: #5a5a5a;
+        }
+
+        #imagePreview,
+        canvas {
+            max-width: 100px;
+            margin: 10px;
+            border: 1px solid #ccc;
+            padding: 5px;
+        }
+
+        button {
+            margin: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        p {
+            margin: 10px;
+            font-size: 18px;
+        }
+
+        .box {
+            width: 400px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+
+<body>
+
+
+    <div class="box">
+        <!-- <a href="../index.html">返回</a> -->
+
+        <h1>房间人数识别</h1>
+        <p>输入数据编号，是1-10129数据</p>
+        <input type="text" id="number_no" value="1" />
+
+
+        <button onclick="predict()">预测</button>
+
+        <p id="predictionResult"></p>
+        <p>耗时: <span id="timeCost">0</span> ms</p>
+        <p>内存占用：<span id="memoryCost">0</span> mb</p>
+        <canvas style="display:none;"></canvas>
+    </div>
+
+
+    <script>
+        var Module = {
+            onRuntimeInitialized: function () {
+                // document.getElementById('imageInput').addEventListener('change', handleImage, false);
+
+            }
+        };
+
+        function predict() {
+
+            var time_start = performance.now();
+            var number_no = document.getElementById('number_no').value;
+            var result = "";
+            if (number_no < 1 || number_no > 10129) {
+                alert("请输入1-10129之间的数据编号");
+                return;
+            }
+            for (var i = 0; i < 10; i++) {
+                var n = parseInt(number_no) + i;
+                var result_temp = Module['predict'](n);
+                
+                result += "数据集中第" + n + "个数据组合预测结果: " + result_temp + "<br>";
+            }
+
+            var time_end = performance.now();
+
+
+            document.getElementById('predictionResult').innerHTML  = '预测结果:<br> ' + result;
+            document.getElementById('timeCost').textContent = time_end - time_start;
+            document.getElementById('memoryCost').textContent = (performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(2);
+        }
+    </script>
+</body>
+
+</html>

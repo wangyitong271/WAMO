@@ -1,0 +1,450 @@
+<!doctype html>
+<html meta charset="utf-8">
+
+<style>
+    .box {
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #fff;
+        border-radius: 5px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+    
+    .test-section {
+        margin-top: 30px;
+        padding: 20px;
+        background-color: #f5f5f5;
+        border-radius: 5px;
+        border: 1px solid #ddd;
+    }
+    
+    .accuracy-result {
+        margin-top: 20px;
+        padding: 15px;
+        background-color: #e8f5e8;
+        border-radius: 5px;
+        border-left: 4px solid #4CAF50;
+    }
+    
+    .test-progress {
+        margin: 10px 0;
+        font-weight: bold;
+        color: #666;
+    }
+    
+    .error-analysis {
+        margin-top: 15px;
+        font-size: 14px;
+        color: #555;
+    }
+    
+    .file-input {
+        margin: 10px 0;
+        padding: 10px;
+        background-color: #fff;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+    }
+</style>
+
+<body>
+    <div class="box">
+        <!-- <a href="../index.html" style="display: block; margin-bottom: 20px;">返回</a> -->
+        <h1>天气预测</h1>
+        <table>
+            <tr>
+                <td>日期</td>
+                <td>温度（℃）</td>
+                <td>表观温度（℃）</td>
+                <td>湿度</td>
+                <td>风速（km/h）</td>
+                <td>风向（度）</td>
+                <td>能见度（km）</td>
+            </tr>
+            <tr>
+                <td><input type="text" value="T1"></td>
+                <td><input type="text" value="9.47222222222222"></td>
+                <td><input type="text" value="7.388888888888887"></td>
+                <td><input type="text" value="0.89"></td>
+                <td><input type="text" value="14.1197"></td>
+                <td><input type="text" value="251.0"></td>
+                <td><input type="text" value="15.826300000000002"></td>
+            </tr>
+            <tr>
+                <td><input type="text" value="T2"></td>
+                <td><input type="text" value="9.355555555555558"></td>
+                <td><input type="text" value="7.227777777777776"></td>
+                <td><input type="text" value="0.86"></td>
+                <td><input type="text" value="14.2646"></td>
+                <td><input type="text" value="259.0"></td>
+                <td><input type="text" value="15.826300000000002"></td>
+            </tr>
+            <tr>
+                <td><input type="text" value="T3"></td>
+                <td><input type="text" value="9.377777777777778"></td>
+                <td><input type="text" value="9.377777777777778"></td>
+                <td><input type="text" value="0.89"></td>
+                <td><input type="text" value="3.9284"></td>
+                <td><input type="text" value="204.0"></td>
+                <td><input type="text" value="14.9569"></td>
+            </tr>
+            <tr>
+                <td><input type="text" value="T4"></td>
+                <td><input type="text" value="8.28888888888889"></td>
+                <td><input type="text" value="5.944444444444446"></td>
+                <td><input type="text" value="0.83"></td>
+                <td><input type="text" value="14.1036"></td>
+                <td><input type="text" value="269.0"></td>
+                <td><input type="text" value="15.826300000000002"></td>
+            </tr>
+            <tr>
+                <td><input type="text" value="T5"></td>
+                <td><input type="text" value="8.755555555555553"></td>
+                <td><input type="text" value="6.977777777777779"></td>
+                <td><input type="text" value="0.83"></td>
+                <td><input type="text" value="11.0446"></td>
+                <td><input type="text" value="259.0"></td>
+                <td><input type="text" value="15.826300000000002"></td>
+            </tr>
+            <tr>
+                <td><input type="text" value="T6"></td>
+                <td><input type="text" value="9.22222222222222"></td>
+                <td><input type="text" value="7.11111111111111"></td>
+                <td><input type="text" value="0.85"></td>
+                <td><input type="text" value="13.9587"></td>
+                <td><input type="text" value="258.0"></td>
+                <td><input type="text" value="14.9569"></td>
+            </tr>
+            <tr>
+                <td><input type="text" value="T7"></td>
+                <td><input type="text" value="7.733333333333334"></td>
+                <td><input type="text" value="5.522222222222221"></td>
+                <td><input type="text" value="0.95"></td>
+                <td><input type="text" value="12.3648"></td>
+                <td><input type="text" value="259.0"></td>
+                <td><input type="text" value="9.982"></td>
+            </tr>
+        </table>
+
+        <button id="predictButton">预测明天气温（℃）</button>
+
+        <h2>结果</h2>
+        <p>预测结果: <span id="result"></span></p>
+        <p>耗时: <span id="timeCost"></span> ms</p>
+        <p>内存占用：<span id="memoryCost"></span> mb</p>
+        
+        <!-- 准确率测试部分 -->
+        <div class="test-section">
+            <h2>准确率测试</h2>
+            <p>测试说明：使用weatherHistory.csv中的历史数据预测次日气温，误差≤设定阈值视为预测准确</p>
+            
+            <div class="file-input">
+                <label>选择历史数据文件：</label>
+                <input type="file" id="csvFileInput" accept=".csv" />
+                <p style="font-size: 12px; color: #666; margin: 5px 0;">
+                    请选择weatherHistory.csv文件，或将包含历史天气数据的CSV文件拖拽到此处
+                </p>
+            </div>
+            
+            <div>
+                <label>误差阈值（℃）：</label>
+                <input type="number" id="errorThreshold" value="3.5" step="0.1" min="0.1" max="10">
+            </div>
+            <div style="margin-top: 10px;">
+                <label>测试样本数量：</label>
+                <input type="number" id="sampleCount" value="1000" min="10" max="5000" step="10">
+                <span style="font-size: 12px; color: #666;">（从历史数据中随机选择的测试样本数量）</span>
+            </div>
+            <br>
+            <button id="accuracyTestButton" disabled>开始准确率测试</button>
+            <div class="test-progress" id="testProgress"></div>
+            
+            <div class="accuracy-result" id="accuracyResult" style="display: none;">
+                <h3>测试结果</h3>
+                <p><strong>数据来源：</strong><span id="dataSource"></span></p>
+                <p><strong>总测试样本数：</strong><span id="totalSamples"></span></p>
+                <p><strong>预测准确数：</strong><span id="correctPredictions"></span></p>
+                <p><strong>准确率：</strong><span id="accuracyRate"></span>%</p>
+                <p><strong>平均绝对误差：</strong><span id="averageError"></span>℃</p>
+            </div>
+        </div>
+    </div>
+
+</body>
+<script>
+    var csvData = [];
+    var testDataReady = false;
+
+    var Module = {
+        onRuntimeInitialized: function () {
+            // 原有的预测功能
+            document.getElementById('predictButton').addEventListener('click', function () {
+                var Matrix3DX = Module['createMatrix3D'](1, 7, 6);
+                var table = document.getElementsByTagName('table')[0];
+                var rows = table.getElementsByTagName('tr');
+                for (var i = 1; i < rows.length; i++) {
+                    var cells = rows[i].getElementsByTagName('td');
+                    for (var j = 1; j < cells.length; j++) {
+                        var input = cells[j].getElementsByTagName('input')[0];
+                        var value = parseFloat(input.value);
+                        Module['setMatrix3DData'](Matrix3DX, 0, i - 1, j - 1, value);
+                    }
+                }
+
+                var time_start = new Date().getTime();
+                var output = Module['predict'](Matrix3DX);
+                var time_end = new Date().getTime();
+                var mem_used = performance.memory.usedJSHeapSize;
+                document.getElementById('timeCost').textContent = time_end - time_start;
+                document.getElementById('memoryCost').textContent = (mem_used / 1024 / 1024).toFixed(2);
+
+                var result = Module['getVectorData'](output, 0);
+                console.log('predict result: ' + result);
+                document.getElementById('result').textContent = result;
+            });
+
+            // CSV文件上传处理
+            document.getElementById('csvFileInput').addEventListener('change', function(e) {
+                var file = e.target.files[0];
+                if (file) {
+                    loadCSVFile(file);
+                }
+            });
+
+            // 准确率测试功能
+            document.getElementById('accuracyTestButton').addEventListener('click', function () {
+                if (testDataReady) {
+                    runAccuracyTest();
+                } else {
+                    alert('请先选择CSV文件');
+                }
+            });
+        }
+    };
+
+    // 解析CSV文件
+    function loadCSVFile(file) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            var csv = e.target.result;
+            parseCSV(csv, file.name);
+        };
+        reader.readAsText(file);
+    }
+
+    // 解析CSV内容
+    function parseCSV(csvText, fileName) {
+        var lines = csvText.split('\n');
+        var headers = lines[0].split(',');
+        
+        // 查找需要的列索引
+        var tempIndex = headers.findIndex(h => h.trim().toLowerCase().includes('temperature (c)'));
+        var apparentTempIndex = headers.findIndex(h => h.trim().toLowerCase().includes('apparent temperature'));
+        var humidityIndex = headers.findIndex(h => h.trim().toLowerCase().includes('humidity'));
+        var windSpeedIndex = headers.findIndex(h => h.trim().toLowerCase().includes('wind speed'));
+        var windBearingIndex = headers.findIndex(h => h.trim().toLowerCase().includes('wind bearing'));
+        var visibilityIndex = headers.findIndex(h => h.trim().toLowerCase().includes('visibility'));
+        var dateIndex = headers.findIndex(h => h.trim().toLowerCase().includes('formatted date'));
+
+        if (tempIndex === -1 || apparentTempIndex === -1 || humidityIndex === -1 || 
+            windSpeedIndex === -1 || windBearingIndex === -1 || visibilityIndex === -1) {
+            alert('CSV文件格式不正确，缺少必要的列');
+            return;
+        }
+
+        csvData = [];
+        
+        // 解析数据行
+        for (var i = 1; i < lines.length; i++) {
+            if (lines[i].trim() === '') continue;
+            
+            var values = parseCSVLine(lines[i]);
+            if (values.length < Math.max(tempIndex, apparentTempIndex, humidityIndex, 
+                                       windSpeedIndex, windBearingIndex, visibilityIndex) + 1) {
+                continue;
+            }
+
+            var temp = parseFloat(values[tempIndex]);
+            var apparentTemp = parseFloat(values[apparentTempIndex]);
+            var humidity = parseFloat(values[humidityIndex]);
+            var windSpeed = parseFloat(values[windSpeedIndex]);
+            var windBearing = parseFloat(values[windBearingIndex]);
+            var visibility = parseFloat(values[visibilityIndex]);
+            var date = values[dateIndex];
+
+            // 检查数据有效性
+            if (!isNaN(temp) && !isNaN(apparentTemp) && !isNaN(humidity) && 
+                !isNaN(windSpeed) && !isNaN(windBearing) && !isNaN(visibility)) {
+                csvData.push({
+                    date: date,
+                    temperature: temp,
+                    apparentTemperature: apparentTemp,
+                    humidity: humidity,
+                    windSpeed: windSpeed,
+                    windBearing: windBearing,
+                    visibility: visibility
+                });
+            }
+        }
+
+        if (csvData.length < 8) {
+            alert('CSV文件中的有效数据不足，至少需要8条记录');
+            return;
+        }
+
+        testDataReady = true;
+        document.getElementById('accuracyTestButton').disabled = false;
+        document.getElementById('testProgress').innerHTML = 
+            '已加载 ' + csvData.length + ' 条历史数据记录，可以开始测试';
+    }
+
+    // 解析CSV行（处理逗号和引号）
+    function parseCSVLine(line) {
+        var result = [];
+        var current = '';
+        var inQuotes = false;
+        
+        for (var i = 0; i < line.length; i++) {
+            var char = line[i];
+            if (char === '"') {
+                inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+                result.push(current.trim());
+                current = '';
+            } else {
+                current += char;
+            }
+        }
+        result.push(current.trim());
+        return result;
+    }
+
+    function runAccuracyTest() {
+        if (!testDataReady || csvData.length < 8) {
+            alert('数据未准备好或数据不足');
+            return;
+        }
+
+        var errorThreshold = parseFloat(document.getElementById('errorThreshold').value);
+        var sampleCount = parseInt(document.getElementById('sampleCount').value);
+        var maxPossibleSamples = csvData.length - 7; // 需要8天数据，所以最大样本数是总数据-7
+        
+        if (sampleCount > maxPossibleSamples) {
+            sampleCount = maxPossibleSamples;
+            document.getElementById('sampleCount').value = sampleCount;
+        }
+
+        var correctPredictions = 0;
+        var errors = [];
+        var progressElement = document.getElementById('testProgress');
+        var resultElement = document.getElementById('accuracyResult');
+        
+        progressElement.innerHTML = '正在进行准确率测试...';
+        resultElement.style.display = 'none';
+
+        // 生成随机测试样本
+        var testSamples = [];
+        var usedIndices = new Set();
+        
+        while (testSamples.length < sampleCount) {
+            var startIndex = Math.floor(Math.random() * (csvData.length - 7));
+            if (!usedIndices.has(startIndex)) {
+                usedIndices.add(startIndex);
+                
+                var historicalData = [];
+                for (var j = 0; j < 7; j++) {
+                    var record = csvData[startIndex + j];
+                    historicalData.push([
+                        record.temperature,
+                        record.apparentTemperature,
+                        record.humidity,
+                        record.windSpeed,
+                        record.windBearing,
+                        record.visibility
+                    ]);
+                }
+                
+                testSamples.push({
+                    historicalData: historicalData,
+                    actualNextDay: csvData[startIndex + 7].temperature,
+                    startDate: csvData[startIndex].date,
+                    endDate: csvData[startIndex + 7].date
+                });
+            }
+        }
+
+        // 模拟异步测试过程
+        setTimeout(function() {
+            for (var i = 0; i < testSamples.length; i++) {
+                var testData = testSamples[i];
+                var Matrix3DX = Module['createMatrix3D'](1, 7, 6);
+                
+                // 填充测试数据
+                for (var j = 0; j < 7; j++) {
+                    for (var k = 0; k < 6; k++) {
+                        Module['setMatrix3DData'](Matrix3DX, 0, j, k, testData.historicalData[j][k]);
+                    }
+                }
+                
+                // 预测
+                var output = Module['predict'](Matrix3DX);
+                var predictedTemp = Module['getVectorData'](output, 0);
+                var actualTemp = testData.actualNextDay;
+                var error = Math.abs(predictedTemp - actualTemp);
+                
+                errors.push(error);
+                
+                if (error <= errorThreshold) {
+                    correctPredictions++;
+                }
+                
+                if (i < 10) { // 只显示前10个测试样本的详细信息
+                    console.log('测试样本 ' + (i + 1) + ': 预测=' + predictedTemp.toFixed(2) + 
+                               '℃, 实际=' + actualTemp.toFixed(2) + '℃, 误差=' + error.toFixed(2) + '℃');
+                }
+                
+                // 更新进度
+                if (i % 10 === 0 || i === testSamples.length - 1) {
+                    progressElement.innerHTML = '正在测试... ' + (i + 1) + '/' + testSamples.length;
+                }
+            }
+            
+            // 计算统计结果
+            var accuracyRate = (correctPredictions / testSamples.length * 100).toFixed(2);
+            var averageError = (errors.reduce(function(a, b) { return a + b; }, 0) / errors.length).toFixed(2);
+            
+            // 显示结果
+            document.getElementById('dataSource').textContent = 'weatherHistory.csv (' + csvData.length + '条记录)';
+            document.getElementById('totalSamples').textContent = testSamples.length;
+            document.getElementById('correctPredictions').textContent = correctPredictions;
+            document.getElementById('accuracyRate').textContent = accuracyRate;
+            document.getElementById('averageError').textContent = averageError;
+            
+            progressElement.innerHTML = '测试完成！共测试了 ' + testSamples.length + ' 个样本';
+            resultElement.style.display = 'block';
+            
+        }, 100);
+    }
+
+    // 如果weatherHistory.csv在同目录下，自动加载
+    window.addEventListener('load', function() {
+        fetch('weatherHistory.csv')
+            .then(response => {
+                if (response.ok) {
+                    return response.text();
+                }
+                throw new Error('weatherHistory.csv文件未找到');
+            })
+            .then(csvText => {
+                parseCSV(csvText, 'weatherHistory.csv');
+                document.getElementById('testProgress').innerHTML += '<br>已自动加载 weatherHistory.csv 文件';
+            })
+            .catch(error => {
+                console.log('自动加载失败：', error.message);
+                document.getElementById('testProgress').innerHTML = '请手动选择 weatherHistory.csv 文件';
+            });
+    });
+</script>
+<script src="weather.js"></script>
+
+</html>

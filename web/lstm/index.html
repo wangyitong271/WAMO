@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>LSTM 股票预测</title>
+    <!-- 引入 Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* 简单的样式调整 */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+
+        input,
+        button {
+            padding: 10px;
+            margin: 5px 0;
+        }
+
+        #myChart {
+            max-width: 800px;
+            max-height: 400px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>LSTM 股票预测</h1>
+    <label for="input">输入前百分比的数据</label>
+    <div style="position: relative; display: inline-block;">
+        <input type="number" id="input" value="15" min="10" max="100" style="padding-right: 20px;">
+        <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%);">%</span>
+    </div>
+    <button onclick="test()">测试</button>
+
+
+    <!-- 添加 Canvas 元素用于图表 -->
+    <canvas id="myChart" width="800" height="400"></canvas>
+
+    <!-- <p>结果 (test1_js): <span id="result1"></span></p>
+    <p>结果 (read_dataset_js): <span id="result2"></span></p> -->
+
+    <script src="lstm.js"></script>
+    <script>
+        var Module = {
+            onRuntimeInitialized: function () {
+                console.log('Module loaded');
+            }
+        };
+
+        var chart; // 用于存储 Chart.js 实例
+
+        function test() {
+            // 获取输入值并转换为整数
+            var inputValue = document.getElementById('input').value;
+            var input = parseInt(inputValue, 10);
+
+            if (isNaN(input)) {
+                alert('请输入一个有效的整数');
+                return;
+            }
+            if (input < 10 || input > 100) {
+                alert('请输入一个介于10和100之间的整数');
+                return;
+            }
+
+            // 调用 WASM 函数
+            try {
+                // 调用 test1_js(x) 函数
+                var resultArray1 = Module['test1_js'](input);
+                console.log('Result Array1 (test1_js):', resultArray1);
+
+                // 检查并显示 test1_js 的结果
+                if (Array.isArray(resultArray1)) {
+                    // document.getElementById('result1').innerText = resultArray1.join(', ');
+                } else {
+                    // document.getElementById('result1').innerText = '返回结果不是预期的数组';
+                }
+
+                // 调用 read_dataset_js(x) 函数
+                var resultArray2 = Module['read_dataset_js'](input);
+                console.log('Result Array2 (read_dataset_js):', resultArray2);
+
+                // 处理 read_dataset_js 的结果：移除前8个数据点
+                if (Array.isArray(resultArray2)) {
+                    if (resultArray2.length > 8) {
+                        var processedArray2 = [null].concat(resultArray2.slice(8));
+                        //document.getElementById('result2').innerText = processedArray2.join(', ');
+                    } else {
+                        alert('read_dataset_js 返回的数据长度不足8个，无法移除前8个数据点');
+                        return;
+                    }
+                } else {
+                    //document.getElementById('result2').innerText = '返回结果不是预期的数组';
+                }
+
+                // 绘制图表
+                drawChart(resultArray1, resultArray2.slice(7));
+            } catch (error) {
+                console.error('调用 WASM 函数时出错:', error);
+                // document.getElementById('result1').innerText = '调用失败';
+                //  document.getElementById('result2').innerText = '调用失败';
+            }
+        }
+
+        function drawChart(data1, data2) {
+            // 如果图表已经存在，先销毁它
+            if (chart) {
+                chart.destroy();
+            }
+
+            // 获取 Canvas 元素的上下文
+            var ctx = document.getElementById('myChart').getContext('2d');
+
+            // 生成 X 轴标签，取两个数据集的最小长度
+            var minLength = Math.min(data1.length, data2.length);
+            var labels = Array.from({ length: minLength }, (_, index) => index + 1);
+
+            // 截取两个数据集为相同长度
+            var plotData1 = data1.slice(0, minLength);
+            var plotData2 = data2.slice(0, minLength);
+
+            // 创建新的图表
+            chart = new Chart(ctx, {
+                type: 'line', // 图表类型，可选 'line', 'bar', 'pie', etc.
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: '预测',
+                            data: plotData1,
+                            borderColor: 'rgba(75, 192, 192, 1)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.1 // 平滑曲线
+                        },
+                        {
+                            label: '实际',
+                            data: plotData2,
+                            borderColor: 'rgba(255, 99, 132, 1)',
+                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.1 // 平滑曲线
+                        }
+                    ]
+                },
+                options: {
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: '数据点'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: '值'
+                            },
+                            beginAtZero: false
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            enabled: true
+                        }
+                    },
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+        }
+    </script>
+</body>
+
+</html>

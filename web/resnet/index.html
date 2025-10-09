@@ -1,0 +1,787 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>RES英文字母识别</title>
+<script src="resnet.js"></script>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        margin: 40px;
+        background-color: #f4f4f9;
+        color: #333;
+    }
+    h1 {
+        color: #5a5a5a;
+    }
+    #imagePreview, canvas {
+        max-width: 100px;
+        margin: 10px;
+        border: 1px solid #ccc;
+        padding: 5px;
+    }
+    button {
+        margin: 10px;
+        padding: 10px 20px;
+        font-size: 16px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+    button:hover {
+        background-color: #45a049;
+    }
+    p {
+        margin: 10px;
+        font-size: 18px;
+    }
+
+    .box {
+        width: 400px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #fff;
+        border-radius: 5px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+</style>
+</head>
+<body>
+    
+    
+    <div class="box">
+        <!-- <a href="../index.html">返回</a> -->
+        
+        <h1>RES英文字母识别</h1>
+        
+        <!-- 性能监控面板 -->
+        <div style="background-color: #f0f8ff; padding: 15px; margin-bottom: 20px; border-radius: 8px; border: 1px solid #ddd;">
+            <h3 style="margin-top: 0; color: #2c5282;">性能监控</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px;">
+                <div>模型加载时间: <strong><span id="modelLoadTime">加载中...</span></strong></div>
+                <div>推理时间: <strong><span id="inferenceTime">0</span> ms</strong></div>
+                <div>内存占用: <strong><span id="memoryCost">0</span> MB</strong></div>
+                <div>内存分布熵: <strong><span id="memoryEntropy">0</span></strong></div>
+                <div>累计准确率: <strong><span id="accuracyRate">0</span>%</strong></div>
+                <div>测试次数: <strong><span id="testCount">0</span></strong></div>
+            </div>
+            <div style="margin-top: 10px;">
+                <button onclick="resetStats()" style="font-size: 12px; padding: 5px 10px;">重置统计</button>
+                <button onclick="exportStats()" style="font-size: 12px; padding: 5px 10px;">导出数据</button>
+            </div>
+        </div>
+
+        
+        
+        <input type="file" id="imageInput" accept="image/*">
+        <br>
+        <img id="imagePreview" src="" alt="Image preview...">
+        
+        <!-- 波形质量分析面板 -->
+        <div style="background-color: #f0f9ff; padding: 15px; margin-bottom: 20px; border-radius: 8px; border: 1px solid #ddd;">
+            <h3 style="margin-top: 0; color: #1e40af;">预测结果</h3>
+            <p id="predictionResult">等待上传图片...</p>
+            <div id="confidenceDisplay" style="margin-top: 10px; font-size: 12px;"></div>
+            
+            <!-- 手动验证准确率 -->
+            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
+                <label style="font-weight: bold;">实际字母验证: </label>
+                <select id="actualLetter" style="margin: 5px; padding: 5px;">
+                    <option value="">请选择实际字母</option>
+                    <option value="A">A</option><option value="B">B</option><option value="C">C</option>
+                    <option value="D">D</option><option value="E">E</option><option value="F">F</option>
+                    <option value="G">G</option><option value="H">H</option><option value="I">I</option>
+                    <option value="J">J</option><option value="K">K</option><option value="L">L</option>
+                    <option value="M">M</option><option value="N">N</option><option value="O">O</option>
+                    <option value="P">P</option><option value="Q">Q</option><option value="R">R</option>
+                    <option value="S">S</option><option value="T">T</option><option value="U">U</option>
+                    <option value="V">V</option><option value="W">W</option><option value="X">X</option>
+                    <option value="Y">Y</option><option value="Z">Z</option>
+                </select>
+                <button onclick="confirmAccuracy()" style="font-size: 12px; padding: 5px 10px;">确认正确性</button>
+            </div>
+        </div>
+
+        <!-- 批量测试准确率 -->
+        <div style="background-color: #fff5f5; padding: 15px; margin-bottom: 20px; border-radius: 8px; border: 1px solid #ddd;">
+            <h3 style="margin-top: 0; color: #c53030;">批量测试准确率</h3>
+            <p style="font-size: 14px;">请选择包含测试图片的文件夹（自动读取PNG图片，格式：{字母}_{编号}.png）</p>
+            <div style="margin: 10px 0;">
+                <input type="file" id="batchInput" webkitdirectory directory style="margin: 5px;">
+            </div>
+            <button id="startBatchTest" onclick="startBatchTest()" disabled style="font-size: 12px; padding: 8px 15px;">开始批量测试</button>
+            <div style="width: 100%; height: 15px; background-color: #f0f0f0; border-radius: 7px; overflow: hidden; margin: 10px 0; display: none;" id="progressBarContainer">
+                <div style="height: 100%; background-color: #4CAF50; width: 0%; transition: width 0.3s ease;" id="progressFill"></div>
+            </div>
+            <p id="progressText" style="display: none; font-size: 12px;">进度: 0/0</p>
+            <div id="batchResults" style="display: none; margin-top: 15px; padding: 15px; background-color: #f9f9f9; border-radius: 5px; border-left: 4px solid #4CAF50;"></div>
+        </div>
+        <!-- 内存分析面板 -->
+        <div style="background-color: #fef5e7; padding: 15px; margin-bottom: 20px; border-radius: 8px; border: 1px solid #ddd;">
+            <h3 style="margin-top: 0; color: #d69e2e;">内存访问分析</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px;">
+                <div>内存访问地址跨度: <strong><span id="memorySpan">0</span> bytes</strong></div>
+                <div>内存访问地址范围: <strong><span id="memoryRange">无</span></strong></div>
+                <div>唯一内存地址访问数量: <strong><span id="uniqueAddresses">0</span></strong></div>
+                <div>内存利用率: <strong><span id="memoryUtilization">0</span>%</strong></div>
+                <div>变化地址比例: <strong><span id="addressChangeRatio">0</span>%</strong></div>
+                <div>地址分布熵: <strong><span id="addressEntropy">0</span></strong></div>
+            </div>
+            <div style="margin-top: 10px; font-size: 12px; background-color: #fff; padding: 10px; border-radius: 4px;">
+                <strong>分析结论:</strong> <span id="memoryAnalysisConclusion">等待分析...</span>
+            </div>
+        </div>
+        <canvas style="display:none;"></canvas>
+    </div>
+
+
+<script>
+// 性能统计变量
+var performanceStats = {
+    modelLoadStartTime: Date.now(),
+    modelLoadTime: 0,
+    totalInferences: 0,
+    correctPredictions: 0,
+    inferenceTimeHistory: [],
+    memoryUsageHistory: [],
+    lastPrediction: null,
+    lastConfidences: null
+};
+
+// 内存分析变量
+var memoryAnalysis = {
+    beforeMemory: null,
+    afterMemory: null,
+    changedAddresses: [],
+    isSupported: false
+};
+
+var Module = {
+    onRuntimeInitialized: function () {
+        // 记录模型加载完成时间
+        performanceStats.modelLoadTime = Date.now() - performanceStats.modelLoadStartTime;
+        document.getElementById('modelLoadTime').innerHTML = performanceStats.modelLoadTime + ' ms';
+        document.getElementById('imageInput').addEventListener('change', handleImage, false);
+        document.getElementById('batchInput').addEventListener('change', handleBatchInput, false);
+        
+        // 初始化内存监控
+        if (performance.memory) {
+            updateMemoryStats();
+        } else {
+            document.getElementById('memoryEntropy').innerHTML = '不支持';
+        }
+    }
+};
+
+// 计算内存分布熵
+function calculateMemoryEntropy() {
+    if (!performance.memory) return 0;
+    
+    var used = performance.memory.usedJSHeapSize;
+    var total = performance.memory.totalJSHeapSize;
+    var limit = performance.memory.jsHeapSizeLimit;
+    
+    // 简化的熵计算：基于内存使用分布
+    var usedRatio = used / limit;
+    var freeRatio = 1 - usedRatio;
+    
+    // 避免log(0)
+    if (usedRatio === 0 || freeRatio === 0) return 0;
+    
+    var entropy = -(usedRatio * Math.log2(usedRatio) + freeRatio * Math.log2(freeRatio));
+    return entropy.toFixed(4);
+}
+
+// 更新内存统计
+function updateMemoryStats() {
+    if (performance.memory) {
+        var memUsed = performance.memory.usedJSHeapSize / 1024 / 1024;
+        var entropy = calculateMemoryEntropy();
+        
+        document.getElementById('memoryCost').innerHTML = memUsed.toFixed(2);
+        document.getElementById('memoryEntropy').innerHTML = entropy;
+        
+        performanceStats.memoryUsageHistory.push(memUsed);
+        if (performanceStats.memoryUsageHistory.length > 50) {
+            performanceStats.memoryUsageHistory.shift();
+        }
+    }
+}
+
+function handleImage(event) {
+    var reader = new FileReader();
+    reader.onload = function(event) {
+        var img = new Image();
+        document.getElementById('imagePreview').src = event.target.result;
+        img.onload = function() {
+            var canvas = document.createElement('canvas');
+            var ctx = canvas.getContext('2d');
+            canvas.width = 28;
+            canvas.height = 28;
+            ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, 28, 28);
+            var imageData = ctx.getImageData(0, 0, 28, 28);
+            predict(imageData);
+        }
+        img.src = event.target.result;
+    }
+    reader.readAsDataURL(event.target.files[0]);
+}
+
+function predict(imageData) {
+    var inferenceStart = performance.now();
+    
+    // 执行前捕获内存状态
+    captureMemoryState('before');
+    
+    // 预处理数据
+    var data = Module['createIamge'](28, 28, 1);
+    for (var i = 0; i < 28; i++) {
+        for (var j = 0; j < 28; j++) {
+            var idx = (i * 28 + j) * 4;
+            Module['setIamgeData'](data, i, j, 0, imageData.data[idx] / 255.0);
+        }
+    }
+    
+    // 执行推理
+    var result = Module['predict'](data);
+    
+    var inferenceEnd = performance.now();
+    var inferenceTime = inferenceEnd - inferenceStart;
+    
+    // 执行后捕获内存状态
+    captureMemoryState('after');
+    
+    // 分析内存变化
+    analyzeMemoryChanges();
+    
+    // 更新统计信息
+    performanceStats.totalInferences++;
+    performanceStats.inferenceTimeHistory.push(inferenceTime);
+    if (performanceStats.inferenceTimeHistory.length > 50) {
+        performanceStats.inferenceTimeHistory.shift();
+    }
+    
+    // 字母映射
+    var result_map = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
+    
+    // 保存预测结果
+    performanceStats.lastPrediction = result_map[result];
+    
+    // 模拟置信度（实际应用中需要从模型获取）
+    var confidences = generateMockConfidences(result);
+    performanceStats.lastConfidences = confidences;
+    
+    // 更新显示
+    document.getElementById('predictionResult').innerHTML = '预测结果: <strong>' + result_map[result] + '</strong>';
+    document.getElementById('inferenceTime').innerHTML = inferenceTime.toFixed(2);
+    document.getElementById('testCount').innerHTML = performanceStats.totalInferences;
+    
+    // 显示置信度分布
+    displayConfidences(confidences, result_map);
+    
+    // 更新内存统计
+    updateMemoryStats();
+    
+    // 重置实际字母选择
+    document.getElementById('actualLetter').value = '';
+}
+
+// 生成模拟置信度分布（实际应用中应从模型获取）
+function generateMockConfidences(predictedIndex) {
+    var confidences = new Array(26).fill(0);
+    confidences[predictedIndex] = 0.7 + Math.random() * 0.3; // 预测类别有较高置信度
+    
+    // 其他类别随机分配较低置信度
+    var remaining = 1 - confidences[predictedIndex];
+    for (var i = 0; i < 26; i++) {
+        if (i !== predictedIndex) {
+            confidences[i] = Math.random() * remaining / 26;
+        }
+    }
+    
+    // 归一化
+    var sum = confidences.reduce((a, b) => a + b, 0);
+    return confidences.map(c => c / sum);
+}
+
+// 显示置信度分布
+function displayConfidences(confidences, labels) {
+    var html = '<strong>Top 5 置信度:</strong><br>';
+    var indexed = confidences.map((conf, idx) => ({conf: conf, label: labels[idx], idx: idx}));
+    indexed.sort((a, b) => b.conf - a.conf);
+    
+    for (var i = 0; i < Math.min(5, indexed.length); i++) {
+        var item = indexed[i];
+        var barWidth = Math.max(1, item.conf * 100);
+        html += '<div style="margin: 2px 0;">';
+        html += '<span style="display: inline-block; width: 20px;">' + item.label + ':</span>';
+        html += '<span style="display: inline-block; width: 50px;">' + (item.conf * 100).toFixed(1) + '%</span>';
+        html += '<div style="display: inline-block; width: ' + barWidth + 'px; height: 10px; background-color: #4CAF50; margin-left: 5px;"></div>';
+        html += '</div>';
+    }
+    
+    document.getElementById('confidenceDisplay').innerHTML = html;
+}
+
+// 确认准确率
+function confirmAccuracy() {
+    var actualLetter = document.getElementById('actualLetter').value;
+    if (!actualLetter || !performanceStats.lastPrediction) {
+        alert('请先选择实际字母');
+        return;
+    }
+    
+    if (actualLetter === performanceStats.lastPrediction) {
+        performanceStats.correctPredictions++;
+    }
+    
+    var accuracyRate = (performanceStats.correctPredictions / performanceStats.totalInferences * 100).toFixed(2);
+    document.getElementById('accuracyRate').innerHTML = accuracyRate;
+    
+    // 提示反馈
+    var feedback = actualLetter === performanceStats.lastPrediction ? '✅ 预测正确' : '❌ 预测错误';
+    alert(feedback + '\n当前准确率: ' + accuracyRate + '%');
+}
+
+// 重置统计
+function resetStats() {
+    performanceStats.totalInferences = 0;
+    performanceStats.correctPredictions = 0;
+    performanceStats.inferenceTimeHistory = [];
+    performanceStats.memoryUsageHistory = [];
+    
+    document.getElementById('accuracyRate').innerHTML = '0';
+    document.getElementById('testCount').innerHTML = '0';
+    document.getElementById('inferenceTime').innerHTML = '0';
+    
+    alert('统计数据已重置');
+}
+
+// 导出统计数据
+function exportStats() {
+    var avgInferenceTime = performanceStats.inferenceTimeHistory.length > 0 
+        ? performanceStats.inferenceTimeHistory.reduce((a, b) => a + b, 0) / performanceStats.inferenceTimeHistory.length 
+        : 0;
+    
+    var avgMemoryUsage = performanceStats.memoryUsageHistory.length > 0
+        ? performanceStats.memoryUsageHistory.reduce((a, b) => a + b, 0) / performanceStats.memoryUsageHistory.length
+        : 0;
+    
+    var stats = {
+        modelLoadTime: performanceStats.modelLoadTime,
+        totalInferences: performanceStats.totalInferences,
+        correctPredictions: performanceStats.correctPredictions,
+        accuracyRate: (performanceStats.correctPredictions / performanceStats.totalInferences * 100).toFixed(2),
+        avgInferenceTime: avgInferenceTime.toFixed(2),
+        avgMemoryUsage: avgMemoryUsage.toFixed(2),
+        currentMemoryEntropy: document.getElementById('memoryEntropy').innerHTML,
+        timestamp: new Date().toISOString()
+    };
+    
+    var dataStr = JSON.stringify(stats, null, 2);
+    var dataBlob = new Blob([dataStr], {type: 'application/json'});
+    
+    var link = document.createElement('a');
+    link.href = URL.createObjectURL(dataBlob);
+    link.download = 'resnet_performance_stats.json';
+    link.click();
+}
+
+// 页面加载时开始计时
+performanceStats.modelLoadStartTime = Date.now();
+
+// 捕获内存状态
+function captureMemoryState(stage) {
+    try {
+        let memoryBuffer = null;
+        
+        // 尝试多种方式获取WebAssembly内存
+        if (Module.HEAPU8 && Module.HEAPU8.buffer) {
+            memoryBuffer = Module.HEAPU8.buffer;
+            memoryAnalysis.isSupported = true;
+        } else if (Module.buffer) {
+            memoryBuffer = Module.buffer;
+            memoryAnalysis.isSupported = true;
+        } else if (Module.asm && Module.asm.memory) {
+            memoryBuffer = Module.asm.memory.buffer;
+            memoryAnalysis.isSupported = true;
+        } else if (Module.wasmMemory && Module.wasmMemory.buffer) {
+            memoryBuffer = Module.wasmMemory.buffer;
+            memoryAnalysis.isSupported = true;
+        }
+        
+        if (!memoryBuffer || !memoryAnalysis.isSupported) {
+            if (stage === 'before') {
+                document.getElementById('memorySpan').innerHTML = '不支持';
+                document.getElementById('memoryRange').innerHTML = 'WebAssembly内存访问不支持';
+                document.getElementById('uniqueAddresses').innerHTML = '不支持';
+                document.getElementById('memoryAnalysisConclusion').innerHTML = '当前环境不支持WebAssembly内存分析';
+            }
+            return;
+        }
+        
+        // 创建内存快照
+        const memorySnapshot = new Uint8Array(memoryBuffer.slice(0));
+        
+        if (stage === 'before') {
+            memoryAnalysis.beforeMemory = memorySnapshot;
+        } else if (stage === 'after') {
+            memoryAnalysis.afterMemory = memorySnapshot;
+        }
+        
+        console.log(`已捕获${stage}阶段的内存状态: ${memorySnapshot.length} bytes`);
+    } catch (err) {
+        console.error('捕获内存状态失败:', err);
+        memoryAnalysis.isSupported = false;
+    }
+}
+
+// 分析内存变化
+function analyzeMemoryChanges() {
+    try {
+        if (!memoryAnalysis.isSupported || !memoryAnalysis.beforeMemory || !memoryAnalysis.afterMemory) {
+            return;
+        }
+        
+        const before = memoryAnalysis.beforeMemory;
+        const after = memoryAnalysis.afterMemory;
+        const length = Math.min(before.length, after.length);
+        
+        // 寻找变化的地址
+        memoryAnalysis.changedAddresses = [];
+        let minChangedAddr = Number.MAX_SAFE_INTEGER;
+        let maxChangedAddr = 0;
+        let changedCount = 0;
+        
+        const uniqueAddresses = new Set();
+        const samplingRate = length > 10000000 ? 10 : 1;
+        
+        for (let i = 0; i < length; i += samplingRate) {
+            if (before[i] !== after[i]) {
+                changedCount++;
+                if (memoryAnalysis.changedAddresses.length < 1000) {
+                    memoryAnalysis.changedAddresses.push(i);
+                }
+                uniqueAddresses.add(i);
+                minChangedAddr = Math.min(minChangedAddr, i);
+                maxChangedAddr = Math.max(maxChangedAddr, i);
+            }
+        }
+        
+        let memorySpan = 0;
+        let memoryRange = "无变化";
+        const uniqueAddressCount = uniqueAddresses.size;
+        
+        if (changedCount > 0) {
+            memorySpan = maxChangedAddr - minChangedAddr + 1;
+            memoryRange = `${minChangedAddr} - ${maxChangedAddr}`;
+            
+            const memoryUtilization = (uniqueAddressCount / memorySpan * 100).toFixed(2);
+            const addressChangeRatio = (changedCount * samplingRate / length * 100).toFixed(2);
+            
+            // 计算地址分布熵
+            const addressEntropy = calculateAddressEntropy(uniqueAddresses, memorySpan);
+            
+            // 更新UI显示
+            document.getElementById('memorySpan').innerHTML = memorySpan.toLocaleString();
+            document.getElementById('memoryRange').innerHTML = memoryRange;
+            document.getElementById('uniqueAddresses').innerHTML = uniqueAddressCount.toLocaleString();
+            document.getElementById('memoryUtilization').innerHTML = memoryUtilization;
+            document.getElementById('addressChangeRatio').innerHTML = addressChangeRatio;
+            document.getElementById('addressEntropy').innerHTML = addressEntropy.toFixed(4);
+            
+            // 生成分析结论
+            const conclusion = generateMemoryConclusion(parseFloat(addressEntropy), parseFloat(memoryUtilization), parseFloat(addressChangeRatio));
+            document.getElementById('memoryAnalysisConclusion').innerHTML = conclusion;
+            
+            // 打印详细信息到控制台
+            console.log('=== ResNet 内存变化分析 ===');
+            console.log(`总变化地址数: ${changedCount} (采样率 ${samplingRate})`);
+            console.log(`唯一内存地址访问数量: ${uniqueAddressCount}`);
+            console.log(`内存访问地址跨度: ${memorySpan} bytes`);
+            console.log(`内存访问地址范围: ${memoryRange}`);
+            console.log(`变化地址比例: ${addressChangeRatio}%`);
+            console.log(`内存利用率: ${memoryUtilization}% (唯一地址数/跨度)`);
+            console.log(`地址分布熵: ${addressEntropy.toFixed(4)}`);
+            console.log(`分析结论: ${conclusion}`);
+            console.log('==============================');
+        } else {
+            document.getElementById('memorySpan').innerHTML = '0';
+            document.getElementById('memoryRange').innerHTML = '无变化';
+            document.getElementById('uniqueAddresses').innerHTML = '0';
+            document.getElementById('memoryUtilization').innerHTML = '0';
+            document.getElementById('addressChangeRatio').innerHTML = '0';
+            document.getElementById('addressEntropy').innerHTML = '0';
+            document.getElementById('memoryAnalysisConclusion').innerHTML = '未检测到内存变化';
+            console.log('未检测到内存变化');
+        }
+    } catch (err) {
+        console.error('分析内存变化失败:', err);
+        document.getElementById('memoryAnalysisConclusion').innerHTML = '内存分析失败: ' + err.message;
+    }
+}
+
+// 计算地址分布熵
+function calculateAddressEntropy(uniqueAddresses, memorySpan) {
+    const addressArray = Array.from(uniqueAddresses);
+    addressArray.sort((a, b) => a - b);
+    
+    if (addressArray.length === 0 || memorySpan === 0) return 0;
+    
+    const binCount = Math.min(100, Math.ceil(memorySpan / 100));
+    const binSize = Math.ceil(memorySpan / binCount);
+    const bins = new Array(binCount).fill(0);
+    
+    for (const addr of addressArray) {
+        const binIndex = Math.floor((addr - addressArray[0]) / binSize);
+        if (binIndex >= 0 && binIndex < binCount) {
+            bins[binIndex]++;
+        }
+    }
+    
+    let entropy = 0;
+    const totalAddrs = addressArray.length;
+    for (const count of bins) {
+        if (count > 0) {
+            const p = count / totalAddrs;
+            entropy -= p * Math.log2(p);
+        }
+    }
+    
+    return entropy / Math.log2(binCount);
+}
+
+// 生成内存分析结论
+function generateMemoryConclusion(entropy, utilization, changeRatio) {
+    if (entropy > 0.8) {
+        return '高度随机分布 - 内存地址高度分散，可能存在混淆保护';
+    } else if (entropy > 0.5) {
+        return '中度随机分布 - 内存地址有一定规律但仍较分散';
+    } else if (entropy > 0.3) {
+        return '低度随机分布 - 内存地址分布有明显规律性';
+    } else {
+        return '高度规律分布 - 内存地址集中，访问模式可预测';
+    }
+}
+
+// 批量测试相关变量
+var batchTestStats = {
+    files: [],
+    currentIndex: 0,
+    correctPredictions: 0,
+    totalPredictions: 0,
+    results: [],
+    isRunning: false
+};
+
+// 处理批量输入
+function handleBatchInput(event) {
+    var allFiles = Array.from(event.target.files);
+    // 只筛选PNG文件，并且文件名符合格式要求：{字母}_{编号}.png
+    batchTestStats.files = allFiles.filter(function(file) {
+        return file.type === 'image/png' && /^[A-Z]_\d+\.png$/i.test(file.name);
+    });
+    
+    var startButton = document.getElementById('startBatchTest');
+    var totalFiles = allFiles.length;
+    var validFiles = batchTestStats.files.length;
+    
+    if (validFiles > 0) {
+        startButton.disabled = false;
+        startButton.innerHTML = '开始批量测试 (' + validFiles + ' 张有效图片，共' + totalFiles + '个文件)';
+    } else {
+        startButton.disabled = true;
+        if (totalFiles > 0) {
+            startButton.innerHTML = '未找到符合格式的PNG文件 (共' + totalFiles + '个文件)';
+        } else {
+            startButton.innerHTML = '开始批量测试';
+        }
+    }
+    
+    // 重置结果
+    document.getElementById('batchResults').style.display = 'none';
+    document.getElementById('progressBarContainer').style.display = 'none';
+    document.getElementById('progressText').style.display = 'none';
+    
+    // 显示文件夹信息
+    if (totalFiles > 0) {
+        console.log('选择的文件夹包含 ' + totalFiles + ' 个文件，其中 ' + validFiles + ' 个有效PNG图片');
+        console.log('有效文件:', batchTestStats.files.map(function(f) { return f.name; }));
+    }
+}
+
+// 从文件名提取字母标签
+function extractLetterFromFilename(filename) {
+    // 提取文件名中的字母标签，格式：{字母}_{编号}.png
+    var match = filename.match(/^([A-Z])_\d+\.png$/i);
+    return match ? match[1].toUpperCase() : null;
+}
+
+// 开始批量测试
+function startBatchTest() {
+    if (batchTestStats.files.length === 0 || batchTestStats.isRunning) return;
+    
+    // 重置变量
+    batchTestStats.currentIndex = 0;
+    batchTestStats.correctPredictions = 0;
+    batchTestStats.totalPredictions = 0;
+    batchTestStats.results = [];
+    batchTestStats.isRunning = true;
+    
+    // 显示进度条
+    document.getElementById('progressBarContainer').style.display = 'block';
+    document.getElementById('progressText').style.display = 'block';
+    document.getElementById('batchResults').style.display = 'none';
+    document.getElementById('startBatchTest').disabled = true;
+    
+    // 开始处理第一张图片
+    processBatchImage();
+}
+
+// 处理批量图片
+function processBatchImage() {
+    if (batchTestStats.currentIndex >= batchTestStats.files.length) {
+        // 所有图片处理完成，显示结果
+        showBatchTestResults();
+        return;
+    }
+    
+    var file = batchTestStats.files[batchTestStats.currentIndex];
+    var expectedLetter = extractLetterFromFilename(file.name);
+    
+    if (expectedLetter === null) {
+        console.warn('无法从文件名提取标签: ' + file.name);
+        batchTestStats.currentIndex++;
+        processBatchImage();
+        return;
+    }
+    
+    var reader = new FileReader();
+    reader.onload = function(event) {
+        var img = new Image();
+        img.onload = function() {
+            var canvas = document.createElement('canvas');
+            var ctx = canvas.getContext('2d');
+            canvas.width = 28;
+            canvas.height = 28;
+            ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, 28, 28);
+            var imageData = ctx.getImageData(0, 0, 28, 28);
+            
+            // 进行预测
+            var predictedIndex = predictBatch(imageData);
+            var result_map = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
+            var predictedLetter = result_map[predictedIndex];
+            
+            // 记录结果
+            batchTestStats.totalPredictions++;
+            var isCorrect = (predictedLetter === expectedLetter);
+            if (isCorrect) {
+                batchTestStats.correctPredictions++;
+            }
+            
+            batchTestStats.results.push({
+                filename: file.name,
+                expected: expectedLetter,
+                predicted: predictedLetter,
+                correct: isCorrect
+            });
+            
+            // 更新进度
+            batchTestStats.currentIndex++;
+            updateBatchProgress();
+            
+            // 处理下一张图片
+            setTimeout(processBatchImage, 10); // 添加小延迟避免阻塞UI
+        }
+        img.src = event.target.result;
+    }
+    reader.readAsDataURL(file);
+}
+
+// 批量预测函数
+function predictBatch(imageData) {
+    var data = Module['createIamge'](28, 28, 1);
+    for (var i = 0; i < 28; i++) {
+        for (var j = 0; j < 28; j++) {
+            var idx = (i * 28 + j) * 4;
+            Module['setIamgeData'](data, i, j, 0, imageData.data[idx] / 255.0);
+        }
+    }
+    return Module['predict'](data);
+}
+
+// 更新批量测试进度
+function updateBatchProgress() {
+    var progress = (batchTestStats.currentIndex / batchTestStats.files.length) * 100;
+    document.getElementById('progressFill').style.width = progress + '%';
+    document.getElementById('progressText').innerHTML = '进度: ' + batchTestStats.currentIndex + '/' + batchTestStats.files.length;
+}
+
+// 显示批量测试结果
+function showBatchTestResults() {
+    var accuracy = (batchTestStats.correctPredictions / batchTestStats.totalPredictions * 100).toFixed(2);
+    
+    var resultsDiv = document.getElementById('batchResults');
+    var resultHTML = '<h4>批量测试结果</h4>';
+    resultHTML += '<p><strong>总图片数：</strong>' + batchTestStats.totalPredictions + '</p>';
+    resultHTML += '<p><strong>正确预测：</strong>' + batchTestStats.correctPredictions + '</p>';
+    resultHTML += '<p><strong>错误预测：</strong>' + (batchTestStats.totalPredictions - batchTestStats.correctPredictions) + '</p>';
+    resultHTML += '<p><strong>准确率：</strong><span style="font-size:20px;color:#4CAF50;font-weight:bold;">' + accuracy + '%</span></p>';
+    
+    // 显示错误预测的详细信息
+    var errorPredictions = batchTestStats.results.filter(function(result) { return !result.correct; });
+    if (errorPredictions.length > 0) {
+        resultHTML += '<h5>错误预测详情（前10个）：</h5>';
+        resultHTML += '<div style="max-height:150px;overflow-y:auto;font-size:12px;">';
+        errorPredictions.slice(0, 10).forEach(function(error) {
+            resultHTML += '<p>' + error.filename + ' - 期望: ' + error.expected + ', 预测: ' + error.predicted + '</p>';
+        });
+        if (errorPredictions.length > 10) {
+            resultHTML += '<p>... 还有 ' + (errorPredictions.length - 10) + ' 个错误</p>';
+        }
+        resultHTML += '</div>';
+    }
+    
+    // 按字母分类显示准确率
+    var letterStats = {};
+    batchTestStats.results.forEach(function(result) {
+        if (!letterStats[result.expected]) {
+            letterStats[result.expected] = { total: 0, correct: 0 };
+        }
+        letterStats[result.expected].total++;
+        if (result.correct) {
+            letterStats[result.expected].correct++;
+        }
+    });
+    
+    resultHTML += '<h5>各字母准确率：</h5>';
+    resultHTML += '<div style="font-size:12px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px;">';
+    Object.keys(letterStats).sort().forEach(function(letter) {
+        var stat = letterStats[letter];
+        var letterAccuracy = (stat.correct / stat.total * 100).toFixed(1);
+        resultHTML += '<div>' + letter + ': ' + letterAccuracy + '% (' + stat.correct + '/' + stat.total + ')</div>';
+    });
+    resultHTML += '</div>';
+    
+    resultsDiv.innerHTML = resultHTML;
+    resultsDiv.style.display = 'block';
+    
+    // 更新全局准确率统计
+    performanceStats.correctPredictions += batchTestStats.correctPredictions;
+    performanceStats.totalInferences += batchTestStats.totalPredictions;
+    var overallAccuracy = (performanceStats.correctPredictions / performanceStats.totalInferences * 100).toFixed(2);
+    document.getElementById('accuracyRate').innerHTML = overallAccuracy;
+    
+    // 重新启用开始按钮
+    document.getElementById('startBatchTest').disabled = false;
+    batchTestStats.isRunning = false;
+    
+    // 隐藏进度条
+    document.getElementById('progressBarContainer').style.display = 'none';
+    document.getElementById('progressText').style.display = 'none';
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+mnist.js:1 wasm streaming compile failed: CompileError: WebAssembly.instantiateStreaming(): invalid start function: non-zero parameter or return count @+1448
+（匿名）	@	mnist.js:1
+mnist.js:1 falling back to ArrayBuffer instantiation
+（匿名）	@	mnist.js:1
+mnist.js:1 failed to asynchronously prepare wasm: CompileError: WebAssembly.instantiate(): invalid start function: non-zero parameter or return count @+1448
+（匿名）	@	mnist.js:1
+mnist.js:1 Aborted(CompileError: WebAssembly.instantiate(): invalid start function: non-zero parameter or return count @+1448)
+abort	@	mnist.js:1
+mnist.js:1 Uncaught (in promise) RuntimeError: Aborted(CompileError: WebAssembly.instantiate(): invalid start function: non-zero parameter or return count @+1448). Build with -sASSERTIONS for more info.
+    at abort (mnist.js:1:5072)
+    at mnist.js:1:6396

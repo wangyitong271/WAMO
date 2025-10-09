@@ -1,0 +1,979 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>波形输出</title>
+<script src="waves.js"></script>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        margin: 40px;
+        background-color: #f4f4f9;
+        color: #333;
+    }
+    h1 {
+        color: #5a5a5a;
+    }
+    #waveCanvas {
+        width: 800px;
+        height: 400px;
+        background-color: white;
+        margin: 20px 10px;
+    }
+    .controls {
+        margin: 20px 10px;
+        padding: 15px;
+        background-color: #f8f9fa;
+        border-radius: 5px;
+        border: 1px solid #dee2e6;
+    }
+    .control-group {
+        margin: 10px 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    label {
+        min-width: 120px;
+    }
+    select, input {
+        padding: 5px;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        margin-right: 15px;
+    }
+    button {
+        padding: 8px 15px;
+        font-size: 14px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    button:hover {
+        background-color: #45a049;
+    }
+    .stats {
+        margin: 10px;
+        font-size: 14px;
+        color: #666;
+    }
+    .box {
+        width: 900px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #fff;
+        border-radius: 5px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+</style>
+</head>
+<body>
+    
+    <div class="box">
+        <h1>波形输出 (GAN)</h1>
+        
+        <!-- 性能监控面板 -->
+        <div style="background-color: #f0f8ff; padding: 15px; margin-bottom: 20px; border-radius: 8px; border: 1px solid #ddd;">
+            <h3 style="margin-top: 0; color: #2c5282;">性能监控</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; font-size: 14px;">
+                <div>模型加载时间: <strong><span id="modelLoadTime">加载中...</span></strong></div>
+                <div>生成时间: <strong><span id="generationTime">0</span> ms</strong></div>
+                <div>内存占用: <strong><span id="memoryCost">0</span> MB</strong></div>
+                <div>内存分布熵: <strong><span id="memoryEntropy">0</span></strong></div>
+                <div>生成次数: <strong><span id="generationCount">0</span></strong></div>
+                <div>平均生成时间: <strong><span id="avgGenerationTime">0</span> ms</strong></div>
+            </div>
+            <div style="margin-top: 10px;">
+                <button onclick="resetStats()" style="font-size: 12px; padding: 5px 10px;">重置统计</button>
+                <button onclick="exportStats()" style="font-size: 12px; padding: 5px 10px;">导出数据</button>
+                <button onclick="showWaveformStats()" style="font-size: 12px; padding: 5px 10px;">波形统计</button>
+            </div>
+        </div>
+
+        
+        
+        <div class="controls">
+            <div class="control-group">
+                <label>波形类型：</label>
+                <select id="waveType">
+                    <option value="0">正弦波</option>
+                    <option value="1">方波</option>
+                    <option value="2">锯齿波</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>X轴周期数：</label>
+                <input type="number" id="xPeriods" value="1" min="1" max="10" step="1">
+                <label>X轴缩放：</label>
+                <input type="number" id="xScale" value="1" min="0.1" max="5" step="0.1">
+            </div>
+            <div class="control-group">
+                <label>Y轴缩放：</label>
+                <input type="number" id="yScale" value="1" min="0.1" max="5" step="0.1">
+                <button onclick="generateWave()">生成波形</button>
+            </div>
+        </div>
+        <canvas id="waveCanvas" width="800" height="400"></canvas>
+        <!-- 波形质量分析面板 -->
+        <div style="background-color: #f0f9ff; padding: 15px; margin-bottom: 20px; border-radius: 8px; border: 1px solid #ddd;">
+            <h3 style="margin-top: 0; color: #1e40af;">波形质量分析</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; font-size: 14px;">
+                <div>波形数据点数: <strong><span id="dataPointCount">0</span></strong></div>
+                <div>波形幅度范围: <strong><span id="amplitudeRange">0</span></strong></div>
+                <div>波形RMS值: <strong><span id="rmsValue">0</span></strong></div>
+                <div>波形平均值: <strong><span id="meanValue">0</span></strong></div>
+                <div>波形标准差: <strong><span id="stdDeviation">0</span></strong></div>
+                <div>波形峰值因子: <strong><span id="peakFactor">0</span></strong></div>
+            </div>
+        </div>
+
+        <!-- 批量生成测试 -->
+        <div style="background-color: #fff5f5; padding: 15px; margin-bottom: 20px; border-radius: 8px; border: 1px solid #ddd;">
+            <h3 style="margin-top: 0; color: #c53030;">批量生成性能测试</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                <div>
+                    <label style="font-weight: bold;">测试次数:</label><br>
+                    <input type="number" id="batchCount" value="100" min="10" max="1000" step="10" style="width: 100%; padding: 5px;">
+                </div>
+                <div>
+                    <label style="font-weight: bold;">测试波形类型:</label><br>
+                    <select id="batchWaveType" style="width: 100%; padding: 5px;">
+                        <option value="all">所有类型</option>
+                        <option value="0">仅正弦波</option>
+                        <option value="1">仅方波</option>
+                        <option value="2">仅锯齿波</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-weight: bold;">测试间隔(ms):</label><br>
+                    <input type="number" id="batchInterval" value="50" min="0" max="1000" step="10" style="width: 100%; padding: 5px;">
+                </div>
+            </div>
+            <button id="startBatchGeneration" onclick="startBatchGeneration()" style="font-size: 12px; padding: 8px 15px;">开始批量生成测试</button>
+            <div style="width: 100%; height: 15px; background-color: #f0f0f0; border-radius: 7px; overflow: hidden; margin: 10px 0; display: none;" id="batchProgressContainer">
+                <div style="height: 100%; background-color: #4CAF50; width: 0%; transition: width 0.3s ease;" id="batchProgressFill"></div>
+            </div>
+            <p id="batchProgressText" style="display: none; font-size: 12px;">进度: 0/0</p>
+            <div id="batchGenerationResults" style="display: none; margin-top: 15px; padding: 15px; background-color: #f9f9f9; border-radius: 5px; border-left: 4px solid #4CAF50;"></div>
+        </div>
+
+
+        <!-- 内存分析面板 -->
+        <div style="background-color: #fef5e7; padding: 15px; margin-bottom: 20px; border-radius: 8px; border: 1px solid #ddd;">
+            <h3 style="margin-top: 0; color: #d69e2e;">内存访问分析</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px;">
+                <div>内存访问地址跨度: <strong><span id="memorySpan">0</span> bytes</strong></div>
+                <div>内存访问地址范围: <strong><span id="memoryRange">无</span></strong></div>
+                <div>唯一内存地址访问数量: <strong><span id="uniqueAddresses">0</span></strong></div>
+                <div>内存利用率: <strong><span id="memoryUtilization">0</span>%</strong></div>
+                <div>变化地址比例: <strong><span id="addressChangeRatio">0</span>%</strong></div>
+                <div>地址分布熵: <strong><span id="addressEntropy">0</span></strong></div>
+            </div>
+            <div style="margin-top: 10px; font-size: 12px; background-color: #fff; padding: 10px; border-radius: 4px;">
+                <strong>分析结论:</strong> <span id="memoryAnalysisConclusion">等待分析...</span>
+            </div>
+        </div>
+        
+        
+    </div>
+
+<script>
+// 性能统计变量
+var performanceStats = {
+    modelLoadStartTime: Date.now(),
+    modelLoadTime: 0,
+    totalGenerations: 0,
+    generationTimeHistory: [],
+    memoryUsageHistory: [],
+    currentWaveformData: null,
+    waveformStats: {
+        dataPoints: 0,
+        amplitudeRange: 0,
+        rmsValue: 0,
+        meanValue: 0,
+        stdDeviation: 0,
+        peakFactor: 0
+    }
+};
+
+// 内存分析变量
+var memoryAnalysis = {
+    beforeMemory: null,
+    afterMemory: null,
+    changedAddresses: [],
+    isSupported: false
+};
+
+var Module = {
+    onRuntimeInitialized: function () {
+        // 记录模型加载完成时间
+        performanceStats.modelLoadTime = Date.now() - performanceStats.modelLoadStartTime;
+        document.getElementById('modelLoadTime').innerHTML = performanceStats.modelLoadTime + ' ms';
+        
+        // 初始化内存监控
+        if (performance.memory) {
+            updateMemoryStats();
+        } else {
+            document.getElementById('memoryEntropy').innerHTML = '不支持';
+        }
+        
+        // 生成初始波形
+        generateWave();
+    }
+};
+
+// 计算内存分布熵
+function calculateMemoryEntropy() {
+    if (!performance.memory) return 0;
+    
+    var used = performance.memory.usedJSHeapSize;
+    var total = performance.memory.totalJSHeapSize;
+    var limit = performance.memory.jsHeapSizeLimit;
+    
+    // 简化的熵计算：基于内存使用分布
+    var usedRatio = used / limit;
+    var freeRatio = 1 - usedRatio;
+    
+    // 避免log(0)
+    if (usedRatio === 0 || freeRatio === 0) return 0;
+    
+    var entropy = -(usedRatio * Math.log2(usedRatio) + freeRatio * Math.log2(freeRatio));
+    return entropy.toFixed(4);
+}
+
+// 更新内存统计
+function updateMemoryStats() {
+    if (performance.memory) {
+        var memUsed = performance.memory.usedJSHeapSize / 1024 / 1024;
+        var entropy = calculateMemoryEntropy();
+        
+        document.getElementById('memoryCost').innerHTML = memUsed.toFixed(2);
+        document.getElementById('memoryEntropy').innerHTML = entropy;
+        
+        performanceStats.memoryUsageHistory.push(memUsed);
+        if (performanceStats.memoryUsageHistory.length > 50) {
+            performanceStats.memoryUsageHistory.shift();
+        }
+    }
+}
+
+// 计算波形统计信息
+function calculateWaveformStats(data) {
+    if (!data || data.length === 0) return;
+    
+    var stats = {
+        dataPoints: data.length,
+        amplitudeRange: 0,
+        rmsValue: 0,
+        meanValue: 0,
+        stdDeviation: 0,
+        peakFactor: 0
+    };
+    
+    // 计算均值
+    var sum = data.reduce((acc, val) => acc + val, 0);
+    stats.meanValue = sum / data.length;
+    
+    // 计算幅度范围
+    var minVal = Math.min(...data);
+    var maxVal = Math.max(...data);
+    stats.amplitudeRange = maxVal - minVal;
+    
+    // 计算RMS值
+    var sumSquares = data.reduce((acc, val) => acc + val * val, 0);
+    stats.rmsValue = Math.sqrt(sumSquares / data.length);
+    
+    // 计算标准差
+    var variance = data.reduce((acc, val) => acc + Math.pow(val - stats.meanValue, 2), 0) / data.length;
+    stats.stdDeviation = Math.sqrt(variance);
+    
+    // 计算峰值因子 (Peak Factor = Peak / RMS)
+    var peakValue = Math.max(Math.abs(maxVal), Math.abs(minVal));
+    stats.peakFactor = stats.rmsValue > 0 ? peakValue / stats.rmsValue : 0;
+    
+    return stats;
+}
+
+// 更新波形统计显示
+function updateWaveformStatsDisplay(stats) {
+    document.getElementById('dataPointCount').innerHTML = stats.dataPoints;
+    document.getElementById('amplitudeRange').innerHTML = stats.amplitudeRange.toFixed(4);
+    document.getElementById('rmsValue').innerHTML = stats.rmsValue.toFixed(4);
+    document.getElementById('meanValue').innerHTML = stats.meanValue.toFixed(4);
+    document.getElementById('stdDeviation').innerHTML = stats.stdDeviation.toFixed(4);
+    document.getElementById('peakFactor').innerHTML = stats.peakFactor.toFixed(4);
+    
+    performanceStats.waveformStats = stats;
+}
+
+function drawGrid(ctx, width, height) {
+    const gridSize = 50;
+    ctx.strokeStyle = '#e0e0e0';
+    ctx.lineWidth = 0.5;
+
+    // 绘制垂直网格线
+    for (let x = 0; x <= width; x += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+    }
+
+    // 绘制水平网格线
+    for (let y = 0; y <= height; y += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+    }
+}
+
+function drawAxes(ctx, width, height) {
+    const yCenter = height / 2;
+    
+    // 绘制坐标轴
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    
+    // X轴
+    ctx.beginPath();
+    ctx.moveTo(0, yCenter);
+    ctx.lineTo(width, yCenter);
+    ctx.stroke();
+    
+    // Y轴
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, height);
+    ctx.stroke();
+    
+    // 绘制刻度
+    ctx.fillStyle = '#000';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    
+    // Y轴刻度
+    for (let y = -1; y <= 1; y += 0.5) {
+        const yPos = yCenter - (y * height / 2);
+        ctx.fillText(y.toFixed(1), -5, yPos);
+    }
+    
+    // X轴刻度
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    const xPeriods = parseFloat(document.getElementById('xPeriods').value);
+    for (let x = 0; x <= 100 * xPeriods; x += 20) {
+        const xPos = (x / (100 * xPeriods)) * width;
+        ctx.fillText(x, xPos, yCenter + 5);
+    }
+}
+
+function drawWave(data) {
+    const canvas = document.getElementById('waveCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // 清除画布
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // 绘制网格
+    drawGrid(ctx, canvas.width, canvas.height);
+    
+    // 绘制坐标轴
+    drawAxes(ctx, canvas.width, canvas.height);
+    
+    // 获取缩放参数
+    const xPeriods = parseFloat(document.getElementById('xPeriods').value);
+    const xScale = parseFloat(document.getElementById('xScale').value);
+    const yScale = parseFloat(document.getElementById('yScale').value);
+    
+    // 设置绘图样式
+    ctx.strokeStyle = '#2196F3';
+    ctx.lineWidth = 2;
+    
+    // 开始绘制
+    ctx.beginPath();
+    
+    const yCenter = canvas.height / 2;
+    const xStep = canvas.width / (data.length * xPeriods);
+    
+    // 绘制多个周期
+    for (let period = 0; period < xPeriods; period++) {
+        for (let i = 0; i < data.length; i++) {
+            const x = (i + period * data.length) * xStep * xScale;
+            const y = yCenter - (data[i] * yScale * canvas.height / 2);
+            
+            if (i === 0 && period === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        }
+    }
+    
+    ctx.stroke();
+}
+
+function generateWave() {
+    var waveType = parseFloat(document.getElementById('waveType').value);
+    var generationStart = performance.now();
+    
+    // 执行前捕获内存状态
+    captureMemoryState('before');
+    
+    // 获取波形数据
+    var result = Module['predict'](waveType);
+    
+    // 将VectorDouble转换为普通数组
+    var waveData = [];
+    for(let i = 0; i < result.size(); i++) {
+        waveData.push(result.get(i));
+    }
+    
+    var generationEnd = performance.now();
+    var generationTime = generationEnd - generationStart;
+    
+    // 执行后捕获内存状态
+    captureMemoryState('after');
+    
+    // 分析内存变化
+    analyzeMemoryChanges();
+    
+    // 更新统计信息
+    performanceStats.totalGenerations++;
+    performanceStats.generationTimeHistory.push(generationTime);
+    if (performanceStats.generationTimeHistory.length > 50) {
+        performanceStats.generationTimeHistory.shift();
+    }
+    performanceStats.currentWaveformData = waveData;
+    
+    // 计算平均生成时间
+    var avgTime = performanceStats.generationTimeHistory.reduce((a, b) => a + b, 0) / performanceStats.generationTimeHistory.length;
+    
+    // 计算波形统计
+    var waveStats = calculateWaveformStats(waveData);
+    
+    // 绘制波形
+    drawWave(waveData);
+    
+    // 更新显示
+    document.getElementById('generationTime').innerHTML = generationTime.toFixed(2);
+    document.getElementById('generationCount').innerHTML = performanceStats.totalGenerations;
+    document.getElementById('avgGenerationTime').innerHTML = avgTime.toFixed(2);
+    
+    // 更新波形统计显示
+    updateWaveformStatsDisplay(waveStats);
+    
+    // 更新内存统计
+    updateMemoryStats();
+}
+
+// 显示详细波形统计
+function showWaveformStats() {
+    if (!performanceStats.currentWaveformData) {
+        alert('请先生成波形');
+        return;
+    }
+    
+    var stats = performanceStats.waveformStats;
+    var data = performanceStats.currentWaveformData;
+    
+    // 计算额外的统计信息
+    var sortedData = [...data].sort((a, b) => a - b);
+    var median = sortedData.length % 2 === 0 
+        ? (sortedData[sortedData.length/2 - 1] + sortedData[sortedData.length/2]) / 2
+        : sortedData[Math.floor(sortedData.length/2)];
+    
+    var q1Index = Math.floor(sortedData.length * 0.25);
+    var q3Index = Math.floor(sortedData.length * 0.75);
+    var q1 = sortedData[q1Index];
+    var q3 = sortedData[q3Index];
+    
+    var message = `波形详细统计信息:\n\n` +
+                  `数据点数: ${stats.dataPoints}\n` +
+                  `幅度范围: ${stats.amplitudeRange.toFixed(6)}\n` +
+                  `均值: ${stats.meanValue.toFixed(6)}\n` +
+                  `中位数: ${median.toFixed(6)}\n` +
+                  `标准差: ${stats.stdDeviation.toFixed(6)}\n` +
+                  `RMS值: ${stats.rmsValue.toFixed(6)}\n` +
+                  `峰值因子: ${stats.peakFactor.toFixed(6)}\n` +
+                  `第一四分位数 (Q1): ${q1.toFixed(6)}\n` +
+                  `第三四分位数 (Q3): ${q3.toFixed(6)}\n` +
+                  `四分位间距 (IQR): ${(q3 - q1).toFixed(6)}`;
+    
+    alert(message);
+}
+
+// 重置统计
+function resetStats() {
+    performanceStats.totalGenerations = 0;
+    performanceStats.generationTimeHistory = [];
+    performanceStats.memoryUsageHistory = [];
+    performanceStats.currentWaveformData = null;
+    
+    document.getElementById('generationCount').innerHTML = '0';
+    document.getElementById('generationTime').innerHTML = '0';
+    document.getElementById('avgGenerationTime').innerHTML = '0';
+    
+    // 重置波形统计
+    document.getElementById('dataPointCount').innerHTML = '0';
+    document.getElementById('amplitudeRange').innerHTML = '0';
+    document.getElementById('rmsValue').innerHTML = '0';
+    document.getElementById('meanValue').innerHTML = '0';
+    document.getElementById('stdDeviation').innerHTML = '0';
+    document.getElementById('peakFactor').innerHTML = '0';
+    
+    alert('统计数据已重置');
+}
+
+// 导出统计数据
+function exportStats() {
+    var avgGenerationTime = performanceStats.generationTimeHistory.length > 0 
+        ? performanceStats.generationTimeHistory.reduce((a, b) => a + b, 0) / performanceStats.generationTimeHistory.length 
+        : 0;
+    
+    var avgMemoryUsage = performanceStats.memoryUsageHistory.length > 0
+        ? performanceStats.memoryUsageHistory.reduce((a, b) => a + b, 0) / performanceStats.memoryUsageHistory.length
+        : 0;
+    
+    var stats = {
+        modelType: 'GAN-WASM',
+        modelLoadTime: performanceStats.modelLoadTime,
+        totalGenerations: performanceStats.totalGenerations,
+        avgGenerationTime: avgGenerationTime.toFixed(2),
+        avgMemoryUsage: avgMemoryUsage.toFixed(2),
+        currentMemoryEntropy: document.getElementById('memoryEntropy').innerHTML,
+        waveformStats: performanceStats.waveformStats,
+        generationTimeHistory: performanceStats.generationTimeHistory,
+        memoryUsageHistory: performanceStats.memoryUsageHistory,
+        timestamp: new Date().toISOString()
+    };
+    
+    var dataStr = JSON.stringify(stats, null, 2);
+    var dataBlob = new Blob([dataStr], {type: 'application/json'});
+    
+    var link = document.createElement('a');
+    link.href = URL.createObjectURL(dataBlob);
+    link.download = 'gan_performance_stats.json';
+    link.click();
+}
+
+// 页面加载时开始计时
+performanceStats.modelLoadStartTime = Date.now();
+
+// 捕获内存状态
+function captureMemoryState(stage) {
+    try {
+        let memoryBuffer = null;
+        
+        // 尝试多种方式获取WebAssembly内存
+        if (Module.HEAPU8 && Module.HEAPU8.buffer) {
+            memoryBuffer = Module.HEAPU8.buffer;
+            memoryAnalysis.isSupported = true;
+        } else if (Module.buffer) {
+            memoryBuffer = Module.buffer;
+            memoryAnalysis.isSupported = true;
+        } else if (Module.asm && Module.asm.memory) {
+            memoryBuffer = Module.asm.memory.buffer;
+            memoryAnalysis.isSupported = true;
+        } else if (Module.wasmMemory && Module.wasmMemory.buffer) {
+            memoryBuffer = Module.wasmMemory.buffer;
+            memoryAnalysis.isSupported = true;
+        }
+        
+        if (!memoryBuffer || !memoryAnalysis.isSupported) {
+            if (stage === 'before') {
+                document.getElementById('memorySpan').innerHTML = '不支持';
+                document.getElementById('memoryRange').innerHTML = 'WebAssembly内存访问不支持';
+                document.getElementById('uniqueAddresses').innerHTML = '不支持';
+                document.getElementById('memoryAnalysisConclusion').innerHTML = '当前环境不支持WebAssembly内存分析';
+            }
+            return;
+        }
+        
+        // 创建内存快照
+        const memorySnapshot = new Uint8Array(memoryBuffer.slice(0));
+        
+        if (stage === 'before') {
+            memoryAnalysis.beforeMemory = memorySnapshot;
+        } else if (stage === 'after') {
+            memoryAnalysis.afterMemory = memorySnapshot;
+        }
+        
+        console.log(`已捕获${stage}阶段的内存状态: ${memorySnapshot.length} bytes`);
+    } catch (err) {
+        console.error('捕获内存状态失败:', err);
+        memoryAnalysis.isSupported = false;
+    }
+}
+
+// 分析内存变化
+function analyzeMemoryChanges() {
+    try {
+        if (!memoryAnalysis.isSupported || !memoryAnalysis.beforeMemory || !memoryAnalysis.afterMemory) {
+            return;
+        }
+        
+        const before = memoryAnalysis.beforeMemory;
+        const after = memoryAnalysis.afterMemory;
+        const length = Math.min(before.length, after.length);
+        
+        // 寻找变化的地址
+        memoryAnalysis.changedAddresses = [];
+        let minChangedAddr = Number.MAX_SAFE_INTEGER;
+        let maxChangedAddr = 0;
+        let changedCount = 0;
+        
+        const uniqueAddresses = new Set();
+        const samplingRate = length > 10000000 ? 10 : 1;
+        
+        for (let i = 0; i < length; i += samplingRate) {
+            if (before[i] !== after[i]) {
+                changedCount++;
+                if (memoryAnalysis.changedAddresses.length < 1000) {
+                    memoryAnalysis.changedAddresses.push(i);
+                }
+                uniqueAddresses.add(i);
+                minChangedAddr = Math.min(minChangedAddr, i);
+                maxChangedAddr = Math.max(maxChangedAddr, i);
+            }
+        }
+        
+        let memorySpan = 0;
+        let memoryRange = "无变化";
+        const uniqueAddressCount = uniqueAddresses.size;
+        
+        if (changedCount > 0) {
+            memorySpan = maxChangedAddr - minChangedAddr + 1;
+            memoryRange = `${minChangedAddr} - ${maxChangedAddr}`;
+            
+            const memoryUtilization = (uniqueAddressCount / memorySpan * 100).toFixed(2);
+            const addressChangeRatio = (changedCount * samplingRate / length * 100).toFixed(2);
+            
+            // 计算地址分布熵
+            const addressEntropy = calculateAddressEntropy(uniqueAddresses, memorySpan);
+            
+            // 更新UI显示
+            document.getElementById('memorySpan').innerHTML = memorySpan.toLocaleString();
+            document.getElementById('memoryRange').innerHTML = memoryRange;
+            document.getElementById('uniqueAddresses').innerHTML = uniqueAddressCount.toLocaleString();
+            document.getElementById('memoryUtilization').innerHTML = memoryUtilization;
+            document.getElementById('addressChangeRatio').innerHTML = addressChangeRatio;
+            document.getElementById('addressEntropy').innerHTML = addressEntropy.toFixed(4);
+            
+            // 生成分析结论
+            const conclusion = generateMemoryConclusion(parseFloat(addressEntropy), parseFloat(memoryUtilization), parseFloat(addressChangeRatio));
+            document.getElementById('memoryAnalysisConclusion').innerHTML = conclusion;
+            
+            // 打印详细信息到控制台
+            console.log('=== GAN 内存变化分析 ===');
+            console.log(`总变化地址数: ${changedCount} (采样率 ${samplingRate})`);
+            console.log(`唯一内存地址访问数量: ${uniqueAddressCount}`);
+            console.log(`内存访问地址跨度: ${memorySpan} bytes`);
+            console.log(`内存访问地址范围: ${memoryRange}`);
+            console.log(`变化地址比例: ${addressChangeRatio}%`);
+            console.log(`内存利用率: ${memoryUtilization}% (唯一地址数/跨度)`);
+            console.log(`地址分布熵: ${addressEntropy.toFixed(4)}`);
+            console.log(`分析结论: ${conclusion}`);
+            console.log('============================');
+        } else {
+            document.getElementById('memorySpan').innerHTML = '0';
+            document.getElementById('memoryRange').innerHTML = '无变化';
+            document.getElementById('uniqueAddresses').innerHTML = '0';
+            document.getElementById('memoryUtilization').innerHTML = '0';
+            document.getElementById('addressChangeRatio').innerHTML = '0';
+            document.getElementById('addressEntropy').innerHTML = '0';
+            document.getElementById('memoryAnalysisConclusion').innerHTML = '未检测到内存变化';
+            console.log('未检测到内存变化');
+        }
+    } catch (err) {
+        console.error('分析内存变化失败:', err);
+        document.getElementById('memoryAnalysisConclusion').innerHTML = '内存分析失败: ' + err.message;
+    }
+}
+
+// 计算地址分布熵
+function calculateAddressEntropy(uniqueAddresses, memorySpan) {
+    const addressArray = Array.from(uniqueAddresses);
+    addressArray.sort((a, b) => a - b);
+    
+    if (addressArray.length === 0 || memorySpan === 0) return 0;
+    
+    const binCount = Math.min(100, Math.ceil(memorySpan / 100));
+    const binSize = Math.ceil(memorySpan / binCount);
+    const bins = new Array(binCount).fill(0);
+    
+    for (const addr of addressArray) {
+        const binIndex = Math.floor((addr - addressArray[0]) / binSize);
+        if (binIndex >= 0 && binIndex < binCount) {
+            bins[binIndex]++;
+        }
+    }
+    
+    let entropy = 0;
+    const totalAddrs = addressArray.length;
+    for (const count of bins) {
+        if (count > 0) {
+            const p = count / totalAddrs;
+            entropy -= p * Math.log2(p);
+        }
+    }
+    
+    return entropy / Math.log2(binCount);
+}
+
+// 生成内存分析结论
+function generateMemoryConclusion(entropy, utilization, changeRatio) {
+    if (entropy > 0.8) {
+        return '高度随机分布 - 内存地址高度分散，可能存在混淆保护';
+    } else if (entropy > 0.5) {
+        return '中度随机分布 - 内存地址有一定规律但仍较分散';
+    } else if (entropy > 0.3) {
+        return '低度随机分布 - 内存地址分布有明显规律性';
+    } else {
+        return '高度规律分布 - 内存地址集中，访问模式可预测';
+    }
+}
+
+// 批量生成测试相关变量
+var batchGenerationStats = {
+    totalTests: 0,
+    currentIndex: 0,
+    generationTimes: [],
+    memoryUsages: [],
+    waveformQualities: [],
+    isRunning: false,
+    testParams: {
+        count: 100,
+        waveType: 'all',
+        interval: 50
+    }
+};
+
+// 开始批量生成测试
+function startBatchGeneration() {
+    if (batchGenerationStats.isRunning) return;
+    
+    // 获取测试参数
+    batchGenerationStats.testParams.count = parseInt(document.getElementById('batchCount').value) || 100;
+    batchGenerationStats.testParams.waveType = document.getElementById('batchWaveType').value;
+    batchGenerationStats.testParams.interval = parseInt(document.getElementById('batchInterval').value) || 50;
+    
+    // 重置统计数据
+    batchGenerationStats.totalTests = batchGenerationStats.testParams.count;
+    batchGenerationStats.currentIndex = 0;
+    batchGenerationStats.generationTimes = [];
+    batchGenerationStats.memoryUsages = [];
+    batchGenerationStats.waveformQualities = [];
+    batchGenerationStats.isRunning = true;
+    
+    // 显示进度条
+    document.getElementById('batchProgressContainer').style.display = 'block';
+    document.getElementById('batchProgressText').style.display = 'block';
+    document.getElementById('batchGenerationResults').style.display = 'none';
+    document.getElementById('startBatchGeneration').disabled = true;
+    
+    // 开始第一次生成
+    processBatchGeneration();
+}
+
+// 处理批量生成
+function processBatchGeneration() {
+    if (batchGenerationStats.currentIndex >= batchGenerationStats.totalTests) {
+        // 所有测试完成，显示结果
+        showBatchGenerationResults();
+        return;
+    }
+    
+    // 确定要测试的波形类型
+    var waveType;
+    if (batchGenerationStats.testParams.waveType === 'all') {
+        waveType = batchGenerationStats.currentIndex % 3; // 循环使用0,1,2
+    } else {
+        waveType = parseInt(batchGenerationStats.testParams.waveType);
+    }
+    
+    // 记录生成前的内存使用
+    var memoryBefore = performance.memory ? performance.memory.usedJSHeapSize / 1024 / 1024 : 0;
+    
+    // 执行波形生成
+    var generationStart = performance.now();
+    var result = Module['predict'](waveType);
+    
+    // 将VectorDouble转换为普通数组
+    var waveData = [];
+    for(let i = 0; i < result.size(); i++) {
+        waveData.push(result.get(i));
+    }
+    
+    var generationEnd = performance.now();
+    var generationTime = generationEnd - generationStart;
+    
+    // 记录生成后的内存使用
+    var memoryAfter = performance.memory ? performance.memory.usedJSHeapSize / 1024 / 1024 : 0;
+    
+    // 计算波形质量指标
+    var quality = calculateWaveformQuality(waveData, waveType);
+    
+    // 保存测试结果
+    batchGenerationStats.generationTimes.push(generationTime);
+    batchGenerationStats.memoryUsages.push(memoryAfter);
+    batchGenerationStats.waveformQualities.push(quality);
+    
+    // 更新进度
+    batchGenerationStats.currentIndex++;
+    updateBatchGenerationProgress();
+    
+    // 继续下一次测试
+    setTimeout(processBatchGeneration, batchGenerationStats.testParams.interval);
+}
+
+// 计算波形质量指标
+function calculateWaveformQuality(data, expectedWaveType) {
+    var stats = calculateWaveformStats(data);
+    var quality = {
+        waveType: expectedWaveType,
+        dataPoints: stats.dataPoints,
+        rmsValue: stats.rmsValue,
+        peakFactor: stats.peakFactor,
+        stdDeviation: stats.stdDeviation,
+        amplitudeRange: stats.amplitudeRange,
+        meanValue: stats.meanValue
+    };
+    
+    // 计算质量评分（基于期望的波形特征）
+    var qualityScore = 0;
+    
+    switch(expectedWaveType) {
+        case 0: // 正弦波
+            // 正弦波的峰值因子应该接近1.414 (√2)
+            var peakFactorScore = Math.max(0, 100 - Math.abs(quality.peakFactor - 1.414) * 50);
+            // 正弦波的均值应该接近0
+            var meanScore = Math.max(0, 100 - Math.abs(quality.meanValue) * 1000);
+            qualityScore = (peakFactorScore + meanScore) / 2;
+            break;
+        case 1: // 方波
+            // 方波的峰值因子通常较高
+            var peakFactorScore = Math.min(100, quality.peakFactor * 30);
+            var meanScore = Math.max(0, 100 - Math.abs(quality.meanValue) * 1000);
+            qualityScore = (peakFactorScore + meanScore) / 2;
+            break;
+        case 2: // 锯齿波
+            // 锯齿波的标准差相对较高
+            var stdScore = Math.min(100, quality.stdDeviation * 200);
+            var meanScore = Math.max(0, 100 - Math.abs(quality.meanValue) * 1000);
+            qualityScore = (stdScore + meanScore) / 2;
+            break;
+    }
+    
+    quality.qualityScore = Math.max(0, Math.min(100, qualityScore));
+    return quality;
+}
+
+// 更新批量生成进度
+function updateBatchGenerationProgress() {
+    var progress = (batchGenerationStats.currentIndex / batchGenerationStats.totalTests) * 100;
+    document.getElementById('batchProgressFill').style.width = progress + '%';
+    document.getElementById('batchProgressText').innerHTML = '进度: ' + batchGenerationStats.currentIndex + '/' + batchGenerationStats.totalTests;
+}
+
+// 显示批量生成结果
+function showBatchGenerationResults() {
+    var times = batchGenerationStats.generationTimes;
+    var memories = batchGenerationStats.memoryUsages;
+    var qualities = batchGenerationStats.waveformQualities;
+    
+    // 计算统计数据
+    var avgTime = times.reduce((a, b) => a + b, 0) / times.length;
+    var minTime = Math.min(...times);
+    var maxTime = Math.max(...times);
+    
+    var avgMemory = memories.reduce((a, b) => a + b, 0) / memories.length;
+    var minMemory = Math.min(...memories);
+    var maxMemory = Math.max(...memories);
+    
+    var avgQuality = qualities.reduce((acc, q) => acc + q.qualityScore, 0) / qualities.length;
+    
+    // 按波形类型分组统计
+    var typeStats = { 0: [], 1: [], 2: [] };
+    qualities.forEach(q => {
+        if (typeStats[q.waveType]) {
+            typeStats[q.waveType].push(q);
+        }
+    });
+    
+    var resultsDiv = document.getElementById('batchGenerationResults');
+    var resultHTML = '<h4>批量生成测试结果</h4>';
+    
+    // 整体性能统计
+    resultHTML += '<div style="margin-bottom: 15px;">';
+    resultHTML += '<h5>整体性能统计:</h5>';
+    resultHTML += '<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; font-size: 13px;">';
+    resultHTML += '<div><strong>生成时间:</strong><br>平均: ' + avgTime.toFixed(2) + 'ms<br>范围: ' + minTime.toFixed(2) + '-' + maxTime.toFixed(2) + 'ms</div>';
+    resultHTML += '<div><strong>内存使用:</strong><br>平均: ' + avgMemory.toFixed(2) + 'MB<br>范围: ' + minMemory.toFixed(2) + '-' + maxMemory.toFixed(2) + 'MB</div>';
+    resultHTML += '<div><strong>波形质量:</strong><br>平均评分: ' + avgQuality.toFixed(1) + '/100<br>总测试数: ' + batchGenerationStats.totalTests + '</div>';
+    resultHTML += '</div></div>';
+    
+    // 按波形类型的统计
+    if (batchGenerationStats.testParams.waveType === 'all') {
+        resultHTML += '<h5>各波形类型质量评分:</h5>';
+        resultHTML += '<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; font-size: 13px;">';
+        
+        var waveNames = ['正弦波', '方波', '锯齿波'];
+        [0, 1, 2].forEach(type => {
+            var typeQualities = typeStats[type];
+            if (typeQualities.length > 0) {
+                var typeAvgQuality = typeQualities.reduce((acc, q) => acc + q.qualityScore, 0) / typeQualities.length;
+                var typeAvgRMS = typeQualities.reduce((acc, q) => acc + q.rmsValue, 0) / typeQualities.length;
+                resultHTML += '<div><strong>' + waveNames[type] + ':</strong><br>';
+                resultHTML += '质量评分: ' + typeAvgQuality.toFixed(1) + '/100<br>';
+                resultHTML += '平均RMS: ' + typeAvgRMS.toFixed(4) + '<br>';
+                resultHTML += '测试次数: ' + typeQualities.length + '</div>';
+            }
+        });
+        resultHTML += '</div>';
+    }
+    
+    // 性能分布统计
+    resultHTML += '<h5>性能分布:</h5>';
+    resultHTML += '<div style="font-size: 12px;">';
+    
+    // 生成时间分布
+    var timeRanges = [
+        { min: 0, max: 1, label: '<1ms' },
+        { min: 1, max: 5, label: '1-5ms' },
+        { min: 5, max: 10, label: '5-10ms' },
+        { min: 10, max: 50, label: '10-50ms' },
+        { min: 50, max: Infinity, label: '>50ms' }
+    ];
+    
+    resultHTML += '<strong>生成时间分布:</strong><br>';
+    timeRanges.forEach(range => {
+        var count = times.filter(t => t >= range.min && t < range.max).length;
+        var percentage = (count / times.length * 100).toFixed(1);
+        resultHTML += range.label + ': ' + count + ' (' + percentage + '%) ';
+    });
+    
+    resultHTML += '</div>';
+    
+    resultsDiv.innerHTML = resultHTML;
+    resultsDiv.style.display = 'block';
+    
+    // 重新启用开始按钮
+    document.getElementById('startBatchGeneration').disabled = false;
+    batchGenerationStats.isRunning = false;
+    
+    // 隐藏进度条
+    document.getElementById('batchProgressContainer').style.display = 'none';
+    document.getElementById('batchProgressText').style.display = 'none';
+    
+    // 更新全局统计
+    performanceStats.generationTimeHistory = performanceStats.generationTimeHistory.concat(times);
+    if (performanceStats.generationTimeHistory.length > 100) {
+        performanceStats.generationTimeHistory = performanceStats.generationTimeHistory.slice(-100);
+    }
+}
+</script>
+</body>
+</html>

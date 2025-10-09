@@ -1,0 +1,347 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>手写数字识别</title>
+<script src="mnist.js"></script>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        margin: 40px;
+        background-color: #f4f4f9;
+        color: #333;
+    }
+    h1 {
+        color: #5a5a5a;
+    }
+    #imagePreview, canvas {
+        max-width: 100px;
+        margin: 10px;
+        border: 1px solid #ccc;
+        padding: 5px;
+    }
+    button {
+        margin: 10px;
+        padding: 10px 20px;
+        font-size: 16px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+    button:hover {
+        background-color: #45a049;
+    }
+    button:disabled {
+        background-color: #cccccc;
+        cursor: not-allowed;
+    }
+    p {
+        margin: 10px;
+        font-size: 18px;
+    }
+
+    .box {
+        width: 400px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #fff;
+        border-radius: 5px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .accuracy-section {
+        margin-top: 30px;
+        border-top: 2px solid #eee;
+        padding-top: 20px;
+    }
+
+    .progress-bar {
+        width: 100%;
+        height: 20px;
+        background-color: #f0f0f0;
+        border-radius: 10px;
+        overflow: hidden;
+        margin: 10px 0;
+    }
+
+    .progress-fill {
+        height: 100%;
+        background-color: #4CAF50;
+        width: 0%;
+        transition: width 0.3s ease;
+    }
+
+    .file-input {
+        margin: 10px 0;
+    }
+
+    #accuracyResults {
+        margin-top: 15px;
+        padding: 15px;
+        background-color: #f9f9f9;
+        border-radius: 5px;
+        border-left: 4px solid #4CAF50;
+    }
+</style>
+</head>
+<body>
+    
+    
+    <div class="box">
+        <!-- <a href="../index.html">返回</a> -->
+        
+        <h1>手写数字识别</h1>
+        
+        <!-- 单张图片测试 -->
+        <h3>单张图片测试</h3>
+        <input type="file" id="imageInput" accept="image/*">
+        <br>
+        <img id="imagePreview" src="" alt="Image preview...">
+        <p id="predictionResult"></p>
+        <p>耗时: <span id="timeCost">0</span> ms</p>
+        <p>内存占用：<span id="memoryCost">0</span> mb</p>
+        <canvas style="display:none;"></canvas>
+
+        <!-- 批量测试准确率 -->
+        <div class="accuracy-section">
+            <h3>批量测试准确率</h3>
+            <p>请选择包含测试图片的文件夹（自动读取PNG图片，格式：{数字}_{编号}.png）</p>
+            <div class="file-input">
+                <input type="file" id="batchInput" webkitdirectory directory>
+            </div>
+            <button id="startBatchTest" disabled>开始批量测试</button>
+            <div class="progress-bar" style="display:none;">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <p id="progressText" style="display:none;">进度: 0/0</p>
+            <div id="accuracyResults" style="display:none;"></div>
+        </div>
+    </div>
+
+
+<script>
+var Module = {
+    onRuntimeInitialized: function () {
+        document.getElementById('imageInput').addEventListener('change', handleImage, false);
+        document.getElementById('batchInput').addEventListener('change', handleBatchInput, false);
+        document.getElementById('startBatchTest').addEventListener('click', startBatchTest, false);
+    }
+};
+
+function handleImage(event) {
+    var reader = new FileReader();
+    reader.onload = function(event) {
+        var img = new Image();
+        document.getElementById('imagePreview').src = event.target.result;
+        img.onload = function() {
+            var canvas = document.createElement('canvas');
+            var ctx = canvas.getContext('2d');
+            canvas.width = 28;
+            canvas.height = 28;
+            ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, 28, 28);
+            var imageData = ctx.getImageData(0, 0, 28, 28);
+            predict(imageData);
+        }
+        img.src = event.target.result;
+    }
+    reader.readAsDataURL(event.target.files[0]);
+}
+
+function predict(imageData) {
+    var time_start = new Date().getTime();
+    var data = Module['createIamge'](28, 28, 1);
+    for (var i = 0; i < 28; i++) {
+        for (var j = 0; j < 28; j++) {
+            var idx = (i * 28 + j) * 4;
+            Module['setIamgeData'](data, i, j, 0, imageData.data[idx] / 255.0);
+        }
+    }
+    var result = Module['predict'](data);
+    var time_end = new Date().getTime();
+    var mem_used = performance.memory.usedJSHeapSize; 
+    document.getElementById('predictionResult').innerHTML = '预测结果: ' + result;
+    document.getElementById('timeCost').innerHTML = time_end - time_start;
+    // 保留2位小数
+    mem_used = mem_used / 1024 / 1024 ;
+    document.getElementById('memoryCost').innerHTML = mem_used.toFixed(2);
+    
+    return result;
+}
+
+// 批量测试相关变量
+var batchFiles = [];
+var currentBatchIndex = 0;
+var correctPredictions = 0;
+var totalPredictions = 0;
+var testResults = [];
+
+function handleBatchInput(event) {
+    var allFiles = Array.from(event.target.files);
+    // 只筛选PNG文件，并且文件名符合格式要求
+    batchFiles = allFiles.filter(function(file) {
+        return file.type === 'image/png' && /^\d+_\d+\.png$/i.test(file.name);
+    });
+    
+    var startButton = document.getElementById('startBatchTest');
+    var totalFiles = allFiles.length;
+    var validFiles = batchFiles.length;
+    
+    if (validFiles > 0) {
+        startButton.disabled = false;
+        startButton.innerHTML = '开始批量测试 (' + validFiles + ' 张有效图片，共' + totalFiles + '个文件)';
+    } else {
+        startButton.disabled = true;
+        if (totalFiles > 0) {
+            startButton.innerHTML = '未找到符合格式的PNG文件 (共' + totalFiles + '个文件)';
+        } else {
+            startButton.innerHTML = '开始批量测试';
+        }
+    }
+    
+    // 重置结果
+    document.getElementById('accuracyResults').style.display = 'none';
+    document.querySelector('.progress-bar').style.display = 'none';
+    document.getElementById('progressText').style.display = 'none';
+    
+    // 显示文件夹信息
+    if (totalFiles > 0) {
+        console.log('选择的文件夹包含 ' + totalFiles + ' 个文件，其中 ' + validFiles + ' 个有效PNG图片');
+        console.log('有效文件:', batchFiles.map(function(f) { return f.name; }));
+    }
+}
+
+function extractLabelFromFilename(filename) {
+    // 提取文件名中的数字标签，格式：{数字}_{编号}.png
+    var match = filename.match(/^(\d+)_\d+\.png$/i);
+    return match ? parseInt(match[1]) : null;
+}
+
+function startBatchTest() {
+    if (batchFiles.length === 0) return;
+    
+    // 重置变量
+    currentBatchIndex = 0;
+    correctPredictions = 0;
+    totalPredictions = 0;
+    testResults = [];
+    
+    // 显示进度条
+    document.querySelector('.progress-bar').style.display = 'block';
+    document.getElementById('progressText').style.display = 'block';
+    document.getElementById('accuracyResults').style.display = 'none';
+    document.getElementById('startBatchTest').disabled = true;
+    
+    // 开始处理第一张图片
+    processBatchImage();
+}
+
+function processBatchImage() {
+    if (currentBatchIndex >= batchFiles.length) {
+        // 所有图片处理完成，显示结果
+        showBatchResults();
+        return;
+    }
+    
+    var file = batchFiles[currentBatchIndex];
+    var expectedLabel = extractLabelFromFilename(file.name);
+    
+    if (expectedLabel === null) {
+        console.warn('无法从文件名提取标签: ' + file.name);
+        currentBatchIndex++;
+        processBatchImage();
+        return;
+    }
+    
+    var reader = new FileReader();
+    reader.onload = function(event) {
+        var img = new Image();
+        img.onload = function() {
+            var canvas = document.createElement('canvas');
+            var ctx = canvas.getContext('2d');
+            canvas.width = 28;
+            canvas.height = 28;
+            ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, 28, 28);
+            var imageData = ctx.getImageData(0, 0, 28, 28);
+            
+            // 进行预测
+            var predictedLabel = predictBatch(imageData);
+            
+            // 记录结果
+            totalPredictions++;
+            var isCorrect = (predictedLabel == expectedLabel);
+            if (isCorrect) {
+                correctPredictions++;
+            }
+            
+            testResults.push({
+                filename: file.name,
+                expected: expectedLabel,
+                predicted: predictedLabel,
+                correct: isCorrect
+            });
+            
+            // 更新进度
+            currentBatchIndex++;
+            updateProgress();
+            
+            // 处理下一张图片
+            setTimeout(processBatchImage, 10); // 添加小延迟避免阻塞UI
+        }
+        img.src = event.target.result;
+    }
+    reader.readAsDataURL(file);
+}
+
+function predictBatch(imageData) {
+    var data = Module['createIamge'](28, 28, 1);
+    for (var i = 0; i < 28; i++) {
+        for (var j = 0; j < 28; j++) {
+            var idx = (i * 28 + j) * 4;
+            Module['setIamgeData'](data, i, j, 0, imageData.data[idx] / 255.0);
+        }
+    }
+    return Module['predict'](data);
+}
+
+function updateProgress() {
+    var progress = (currentBatchIndex / batchFiles.length) * 100;
+    document.getElementById('progressFill').style.width = progress + '%';
+    document.getElementById('progressText').innerHTML = '进度: ' + currentBatchIndex + '/' + batchFiles.length;
+}
+
+function showBatchResults() {
+    var accuracy = (correctPredictions / totalPredictions * 100).toFixed(2);
+    
+    var resultsDiv = document.getElementById('accuracyResults');
+    var resultHTML = '<h4>测试结果</h4>';
+    resultHTML += '<p><strong>总图片数：</strong>' + totalPredictions + '</p>';
+    resultHTML += '<p><strong>正确预测：</strong>' + correctPredictions + '</p>';
+    resultHTML += '<p><strong>错误预测：</strong>' + (totalPredictions - correctPredictions) + '</p>';
+    resultHTML += '<p><strong>准确率：</strong><span style="font-size:24px;color:#4CAF50;font-weight:bold;">' + accuracy + '%</span></p>';
+    
+    // 显示错误预测的详细信息
+    var errorPredictions = testResults.filter(function(result) { return !result.correct; });
+    if (errorPredictions.length > 0) {
+        resultHTML += '<h5>错误预测详情：</h5>';
+        resultHTML += '<div style="max-height:200px;overflow-y:auto;font-size:14px;">';
+        errorPredictions.forEach(function(error) {
+            resultHTML += '<p>' + error.filename + ' - 期望: ' + error.expected + ', 预测: ' + error.predicted + '</p>';
+        });
+        resultHTML += '</div>';
+    }
+    
+    resultsDiv.innerHTML = resultHTML;
+    resultsDiv.style.display = 'block';
+    
+    // 重新启用开始按钮
+    document.getElementById('startBatchTest').disabled = false;
+    
+    // 隐藏进度条
+    document.querySelector('.progress-bar').style.display = 'none';
+    document.getElementById('progressText').style.display = 'none';
+}
+</script>
+</body>
+</html>

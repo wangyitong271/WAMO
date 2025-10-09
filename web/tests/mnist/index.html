@@ -1,0 +1,435 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>手写数字识别</title>
+<script src="mnist.js"></script>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        margin: 40px;
+        background-color: #f4f4f9;
+        color: #333;
+    }
+    h1 {
+        color: #5a5a5a;
+    }
+    #imagePreview, canvas {
+        max-width: 100px;
+        margin: 10px;
+        border: 1px solid #ccc;
+        padding: 5px;
+    }
+    button {
+        margin: 10px;
+        padding: 10px 20px;
+        font-size: 16px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+    button:hover {
+        background-color: #45a049;
+    }
+    p {
+        margin: 10px;
+        font-size: 18px;
+    }
+
+    .box {
+        width: 400px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #fff;
+        border-radius: 5px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+</style>
+</head>
+<body>
+    
+    <div class="box">
+        <!-- <a href="../index.html">返回</a> -->
+        
+        <h1>手写数字识别</h1>
+        <input type="file" id="imageInput" accept="image/*">
+        <br>
+        <img id="imagePreview" src="" alt="Image preview...">
+        <p id="predictionResult"></p>        <p>耗时: <span id="timeCost">0</span> ms</p>
+        <p>内存占用：<span id="memoryCost">0</span> mb</p>
+        <p>内存访问地址跨度：<span id="memorySpan">0</span> bytes</p>
+        <p>内存访问地址范围：<span id="memoryRange">无</span></p>
+        <p>唯一内存地址访问数量：<span id="uniqueAddresses">0</span></p>
+        <canvas style="display:none;"></canvas>
+    </div>
+
+
+<script>
+// 先定义全局变量以便存储分析结果
+var memoryAnalysis = {
+    beforeMemory: null,
+    afterMemory: null,
+    changedAddresses: []
+};
+
+// 修改Module配置，添加内存监控功能
+var Module = {
+    // 记录内存对象
+    memoryBase: 0,
+    memory: null,
+    
+    // 初始化完成时的回调
+    onRuntimeInitialized: function() {
+        console.log("WebAssembly模块初始化完成");
+        document.getElementById('imageInput').addEventListener('change', handleImage, false);
+    },
+    
+    // 内存增长回调
+    onGrowMemory: function(size) {
+        console.log("WebAssembly内存增长到: " + size + " 页");
+    },
+      // 模块准备好时
+    postRun: function() {
+        console.log("WebAssembly模块已加载");
+        // 此时可以确保可以获取内存
+        if(Module.HEAPU8 && Module.HEAPU8.buffer) {
+            console.log("成功获取WebAssembly内存，大小：" + (Module.HEAPU8.buffer.byteLength / 1024 / 1024).toFixed(2) + " MB");
+        }
+    }
+};
+
+
+
+// 图像处理函数
+function handleImage(event) {
+    var reader = new FileReader();
+    reader.onload = function(event) {
+        var img = new Image();
+        document.getElementById('imagePreview').src = event.target.result;
+        img.onload = function() {
+            var canvas = document.createElement('canvas');
+            var ctx = canvas.getContext('2d');
+            canvas.width = 28;
+            canvas.height = 28;
+            ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, 28, 28);
+            var imageData = ctx.getImageData(0, 0, 28, 28);
+            predict(imageData);
+        }
+        img.src = event.target.result;
+    }
+    reader.readAsDataURL(event.target.files[0]);
+}
+
+// 预测函数
+function predict(imageData) {
+    // 打印模块结构便于调试
+    console.log('Module structure:', {
+        hasHEAPU8: !!Module.HEAPU8,
+        hasAsm: !!Module.asm,
+        hasMalloc: !!Module._malloc,
+        hasFree: !!Module._free
+    });
+    
+    try {
+        // 执行前捕获内存状态
+        captureMemoryState('before');
+        
+        var time_start = new Date().getTime();
+        var data = Module['createIamge'](28, 28, 1);
+        for (var i = 0; i < 28; i++) {
+            for (var j = 0; j < 28; j++) {
+                var idx = (i * 28 + j) * 4;
+                Module['setIamgeData'](data, i, j, 0, imageData.data[idx] / 255.0);
+            }
+        }
+        
+        // 调用模型预测函数
+        var result = Module['predict'](data);
+        var time_end = new Date().getTime();
+        
+        // 执行后捕获内存状态
+        captureMemoryState('after');
+        
+        // 分析内存变化
+        analyzeMemoryChanges();
+        
+        // 更新UI
+        var mem_used = 0;
+        try {
+            mem_used = performance.memory.usedJSHeapSize / 1024 / 1024;
+        } catch (e) {
+            console.warn('无法获取内存使用信息:', e);
+            mem_used = 0;
+        }
+        
+        document.getElementById('predictionResult').innerHTML = '预测结果: ' + result;
+        document.getElementById('timeCost').innerHTML = time_end - time_start;
+        document.getElementById('memoryCost').innerHTML = mem_used.toFixed(2);
+    } catch (err) {
+        console.error('预测过程出错:', err, err.stack);
+        document.getElementById('predictionResult').innerHTML = '预测失败: ' + err.message;
+    }
+}
+
+// 捕获内存状态
+function captureMemoryState(stage) {
+    try {
+        let memoryBuffer = null;
+        
+        // 尝试多种方式获取WebAssembly内存
+        if (Module.HEAPU8 && Module.HEAPU8.buffer) {
+            // 最常见的情况，Emscripten通常使用HEAPU8等类型化数组
+            memoryBuffer = Module.HEAPU8.buffer;
+            console.log(`通过HEAPU8获取内存成功，大小: ${memoryBuffer.byteLength} bytes`);
+        } else if (Module.buffer) {
+            // 直接buffer属性
+            memoryBuffer = Module.buffer;
+        } else if (Module.asm && Module.asm.memory) {
+            // WebAssembly.Memory对象
+            memoryBuffer = Module.asm.memory.buffer;
+        } else if (Module.wasmMemory && Module.wasmMemory.buffer) {
+            // 直接wasmMemory对象
+            memoryBuffer = Module.wasmMemory.buffer;
+        } else if (typeof WebAssembly !== 'undefined' && WebAssembly.Memory && Module.memory instanceof WebAssembly.Memory) {
+            memoryBuffer = Module.memory.buffer;
+        } else {
+            console.error('无法访问WebAssembly内存，请检查控制台输出查看模块结构');
+            console.log('Module对象属性:', Object.keys(Module));
+            return;
+        }
+        
+        if (!memoryBuffer) {
+            console.error('无法获取有效的内存缓冲区');
+            return;
+        }
+        
+        // 创建内存快照（使用Uint8Array复制整个内存）
+        // 注意：使用slice(0)复制整个内存区域，避免引用原始缓冲区
+        const memorySnapshot = new Uint8Array(memoryBuffer.slice(0));
+        
+        if (stage === 'before') {
+            memoryAnalysis.beforeMemory = memorySnapshot;
+        } else if (stage === 'after') {
+            memoryAnalysis.afterMemory = memorySnapshot;
+        }
+        
+        console.log(`已捕获${stage}阶段的内存状态: ${memorySnapshot.length} bytes`);
+    } catch (err) {
+        console.error('捕获内存状态失败:', err, err.stack);
+    }
+}
+
+// 分析内存变化
+function analyzeMemoryChanges() {
+    try {
+        // 检查内存快照是否捕获成功
+        if (!memoryAnalysis.beforeMemory || !memoryAnalysis.afterMemory) {
+            console.error('缺少完整的内存状态数据');
+            document.getElementById('memorySpan').innerHTML = '未知 (内存捕获失败)';
+            document.getElementById('memoryRange').innerHTML = '未知 (内存捕获失败)';
+            document.getElementById('uniqueAddresses').innerHTML = '未知 (内存捕获失败)';
+            return;
+        }
+        
+        const before = memoryAnalysis.beforeMemory;
+        const after = memoryAnalysis.afterMemory;
+        
+        console.log(`内存分析: 执行前 ${before.length} bytes, 执行后 ${after.length} bytes`);
+        
+        // 确保两次快照长度相同
+        const length = Math.min(before.length, after.length);
+        
+        // 寻找变化的地址
+        memoryAnalysis.changedAddresses = [];
+        let minChangedAddr = Number.MAX_SAFE_INTEGER;
+        let maxChangedAddr = 0;
+        let changedCount = 0;
+        
+        // 使用Set收集唯一的变化地址，更高效且自动去重
+        const uniqueAddresses = new Set();
+        
+        // 为了提高性能，限制处理量，每10个字节采样一个
+        // 这对于大型内存是必要的，可以根据实际情况调整采样率
+        const samplingRate = length > 10000000 ? 10 : 1;
+        
+        for (let i = 0; i < length; i += samplingRate) {
+            if (before[i] !== after[i]) {
+                changedCount++;
+                // 为了避免内存爆炸，只存储有限数量的变化地址
+                if (memoryAnalysis.changedAddresses.length < 1000) {
+                    memoryAnalysis.changedAddresses.push(i);
+                }
+                // 将变化的地址添加到唯一地址集合
+                uniqueAddresses.add(i);
+                minChangedAddr = Math.min(minChangedAddr, i);
+                maxChangedAddr = Math.max(maxChangedAddr, i);
+            }
+        }
+        
+        // 计算跨度和唯一地址数量
+        let memorySpan = 0;
+        let memoryRange = "无变化";
+        const uniqueAddressCount = uniqueAddresses.size;
+        
+        if (changedCount > 0) {
+            memorySpan = maxChangedAddr - minChangedAddr + 1;
+            memoryRange = `${minChangedAddr} - ${maxChangedAddr}`;
+            
+            // 计算内存利用率
+            const memoryUtilization = (uniqueAddressCount / memorySpan * 100).toFixed(2);
+            
+            // 更新UI
+            document.getElementById('memorySpan').innerHTML = memorySpan.toLocaleString();
+            document.getElementById('memoryRange').innerHTML = memoryRange;
+            document.getElementById('uniqueAddresses').innerHTML = uniqueAddressCount.toLocaleString() + 
+                ` (利用率: ${memoryUtilization}%)`;
+            
+            // 打印详细信息到控制台
+            console.log('内存变化分析:');
+            console.log(`总变化地址数: ${changedCount} (采样率 ${samplingRate})`);
+            console.log(`唯一内存地址访问数量: ${uniqueAddressCount}`);
+            console.log(`内存访问地址跨度: ${memorySpan} bytes`);
+            console.log(`内存访问地址范围: ${memoryRange}`);
+            console.log(`变化地址比例: ${(changedCount * samplingRate / length * 100).toFixed(2)}%`);
+            console.log(`内存利用率: ${memoryUtilization}% (唯一地址数/跨度)`);
+            
+            // 分析唯一地址的分散程度
+            analyzeMemoryDistribution(uniqueAddresses, memorySpan);
+            
+            // 变化地址的分布模式分析
+            if (memoryAnalysis.changedAddresses.length > 1) {
+                analyzeAddressDistribution(memoryAnalysis.changedAddresses);
+            }
+        } else {
+            console.log('未检测到内存变化');
+            document.getElementById('memorySpan').innerHTML = '0';
+            document.getElementById('memoryRange').innerHTML = '无变化';
+            document.getElementById('uniqueAddresses').innerHTML = '0';
+        }
+    } catch (err) {
+        console.error('分析内存变化失败:', err);
+        document.getElementById('memorySpan').innerHTML = '错误';
+        document.getElementById('memoryRange').innerHTML = '分析失败: ' + err.message;
+    }
+}
+
+// 分析唯一内存地址的分散程度
+function analyzeMemoryDistribution(uniqueAddresses, memorySpan) {
+    const addressArray = Array.from(uniqueAddresses);
+    addressArray.sort((a, b) => a - b);
+    
+    // 计算唯一地址集合的熵(entropy)，评估随机性
+    // 将内存空间分成若干个桶(bin)，计算每个桶中地址的数量分布
+    const binCount = Math.min(100, Math.ceil(memorySpan / 100)); // 最多100个桶
+    const binSize = Math.ceil(memorySpan / binCount);
+    const bins = new Array(binCount).fill(0);
+    
+    // 统计每个桶中的地址数量
+    for (const addr of addressArray) {
+        const binIndex = Math.floor((addr - addressArray[0]) / binSize);
+        if (binIndex >= 0 && binIndex < binCount) {
+            bins[binIndex]++;
+        }
+    }
+    
+    // 计算地址分布的熵
+    let entropy = 0;
+    const totalAddrs = addressArray.length;
+    for (const count of bins) {
+        if (count > 0) {
+            const p = count / totalAddrs;
+            entropy -= p * Math.log2(p);
+        }
+    }
+    // 归一化熵值 (最大熵是log2(binCount))
+    const normalizedEntropy = entropy / Math.log2(binCount);
+    
+    // 计算地址连续性指标
+    let contiguousRegions = 0;
+    let inRegion = false;
+    for (let i = 1; i < addressArray.length; i++) {
+        if (addressArray[i] === addressArray[i-1] + 1) {
+            if (!inRegion) {
+                inRegion = true;
+                contiguousRegions++;
+            }
+        } else {
+            inRegion = false;
+        }
+    }
+    
+    // 计算分散率（唯一地址数 / 连续区域数）
+    const dispersalRatio = addressArray.length / (contiguousRegions || 1);
+    
+    console.log('\n唯一内存地址分布分析:');
+    console.log(`唯一地址总数: ${addressArray.length}`);
+    console.log(`连续区域数: ${contiguousRegions}`);
+    console.log(`分散率: ${dispersalRatio.toFixed(2)} (值越大表示地址越分散)`);
+    console.log(`地址分布熵: ${normalizedEntropy.toFixed(4)} (0-1，越接近1表示分布越随机)`);
+    
+    // 分析结论
+    let conclusion = '';
+    if (normalizedEntropy > 0.8) {
+        conclusion = '高度随机分布 (内存地址高度分散，权重可能已被混淆)';
+    } else if (normalizedEntropy > 0.5) {
+        conclusion = '中度随机分布 (内存地址有一定规律但仍较分散)';
+    } else if (normalizedEntropy > 0.3) {
+        conclusion = '低度随机分布 (内存地址分布有规律性)';
+    } else {
+        conclusion = '高度规律分布 (内存地址集中，几乎没有混淆)';
+    }
+    console.log(`分析结论: ${conclusion}`);
+}
+
+// 分析地址分布模式
+function analyzeAddressDistribution(addresses) {
+    // 地址排序
+    addresses.sort((a, b) => a - b);
+    
+    // 计算地址间隔
+    let gaps = [];
+    for (let i = 1; i < addresses.length; i++) {
+        gaps.push(addresses[i] - addresses[i-1]);
+    }
+    
+    // 计算间隔统计信息
+    let sum = gaps.reduce((a, b) => a + b, 0);
+    let mean = sum / gaps.length;
+    let median = gaps.length % 2 === 0 
+        ? (gaps[gaps.length/2 - 1] + gaps[gaps.length/2]) / 2
+        : gaps[Math.floor(gaps.length/2)];
+        
+    // 计算最大连续区块(最多连续变化的地址数量)
+    let maxConsecutive = 1;
+    let currentConsecutive = 1;
+    for (let i = 1; i < addresses.length; i++) {
+        if (addresses[i] === addresses[i-1] + 1) {
+            currentConsecutive++;
+        } else {
+            maxConsecutive = Math.max(maxConsecutive, currentConsecutive);
+            currentConsecutive = 1;
+        }
+    }
+    maxConsecutive = Math.max(maxConsecutive, currentConsecutive);
+    
+    console.log('\n地址分布分析:');
+    console.log(`平均间隔: ${mean.toFixed(2)} bytes`);
+    console.log(`中位数间隔: ${median} bytes`);
+    console.log(`最大连续区块: ${maxConsecutive} bytes`);
+    
+    // 判断分布模式
+    if (maxConsecutive > addresses.length * 0.8) {
+        console.log('分布模式: 高度集中 (内存访问连续性很高)');
+    } else if (mean < 10) {
+        console.log('分布模式: 较为集中 (内存访问较为连续)');
+    } else if (mean > 1000) {
+        console.log('分布模式: 高度分散 (内存访问非常随机，可能存在混淆)');
+    } else {
+        console.log('分布模式: 中度分散 (内存访问有一定随机性)');
+    }
+}
+</script>
+</body>
+</html>

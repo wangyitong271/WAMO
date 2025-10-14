@@ -1,6 +1,8 @@
 README
 
-1.我们将在本章中展示如何设置 Emscripten，您将需要在您的系统上安装以下内容：
+
+
+1.WAMO的运行首先需要安装好所需版本的Emscripten编译器。我们将在本章中展示如何设置 Emscripten，您将需要在您的系统上安装以下内容：
 
 Python >= 3.6
 
@@ -49,59 +51,6 @@ $ emsdk update
 
 --------------------
 
-在本项目中，浏览器通过 **Emscripten 编译后的 Wasm 模块**（`Module`）进行推理。前端调用流程如下：
-
-1. **加载 Wasm 模块**：Emscripten 会在网页加载时初始化 `Module`，并提供导出的接口函数（如 `createImage`、`setImageData`、`predict`、`freeImage`）。
-
-2. **准备输入数据**：将图像缩放到固定大小（例如 `200x200`），读取像素值并归一化到 `[0, 1]`。
-
-3. **调用推理接口**：通过 `Module.predict` 将输入数据传入模型，获取预测结果。
-
-4. **释放内存**：使用 `Module.freeImage` 释放临时分配的内存。
-
-```javascript
-<script>
-    var Module = {
-        onRuntimeInitialized: function () {
-            console.log("Wasm 模块已加载，可以调用推理函数");
-        }
-    };
-
-    async function runInference(imageData) {
-        // 1. 创建输入数据容器 (200x200x3)
-        var data = Module['createImage'](200, 200, 3);
-
-        // 2. 填充像素数据 (归一化到 [0, 1])
-        for (var i = 0; i < 200; i++) {
-            for (var j = 0; j < 200; j++) {
-                var idx = (i * 200 + j) * 4;
-                for (var k = 0; k < 3; k++) {
-                    Module['setImageData'](data, i, j, k, imageData.data[idx + k] / 255.0);
-                }
-            }
-        }
-
-        // 3. 调用推理函数
-        var result = Module['predict'](data);
-
-        // 4. 解析输出结果
-        if (result == 0) {
-            console.log("预测结果: 猫");
-        } else {
-            console.log("预测结果: 狗");
-        }
-
-        // 5. 释放内存
-        Module['freeImage'](data);
-    }
-</script>
-
-```
-
-
-
-
-
 
 
 
@@ -112,7 +61,7 @@ $ emsdk update
 
 -------
 
-WasmCrypt 提供一套从模型到受保护 Wasm 的完整流程：包含模型示例、模型转换模块、混淆算法实现与前端运行示例。目标是把初始模型生成 Wasm/JS，随后应用混淆和保护策略，最后在浏览器端通过静态服务器运行验证。
+WAMO 提供一套从模型到受保护 Wasm 的完整流程：包含模型示例、模型转换模块、混淆算法实现与前端运行示例。目标是把初始模型生成 Wasm/JS，随后应用混淆和保护策略，最后在浏览器端通过静态服务器运行验证。
 
 * * *
 
@@ -124,7 +73,7 @@ WasmCrypt 提供一套从模型到受保护 Wasm 的完整流程：包含模型�
   混淆算法相关代码与资源（即“混淆”实现）。
 
 * `cpp_sre/`  
-  C++ 算子实现集合 —— 包含约 140+ 个算子，是模型转换后在本地/wasm 中依赖的核心算子实现。
+  C++ 算子实现集合 —— 包含约 140+ 个算子，是模型转换后在本地/wasm 中依赖的核心算子实现。另还包含加密模型权重所需用到的加密文件。
 
 * `model/`  
   示例与案例模型目录：包含原始模型（各种格式）、模型转换模块产生的 Wasm 与 JS 文件（示例）。
@@ -132,14 +81,17 @@ WasmCrypt 提供一套从模型到受保护 Wasm 的完整流程：包含模型�
 * `web/`  
   前端示例目录：每个示例模型在 `web` 下有对应的文件夹（将 `model/` 中生成的 wasm/js 复制到对应 `web/<model-name>/` 下即可通过静态服务器运行）。
 
-* `ui/` 或 `gui/`（若存在）  
+* `ui/` 或 `gui/`  
   项目的图形界面（Python UI）或启动脚本，用于交互式选择并输出混淆后的 wasm。
 
-* `dist/` 或 `release/`（若存在）  
+* `dist/` 或 `release/`  
   打包后的可执行文件（`.exe`）或其他二进制发布物。
 
-* `scripts/`（若存在）  
+* `scripts/`  
   包含编译、打包或部署相关脚本（例如用于调用 Emscripten 的编译脚本）。
+
+* utile/
+  实现读取各种框架的模型（例如tf，onnx）以及构建计算图所需用到的脚本
 
 * 其他配置文件：`requirements.txt`、`README.md`（本文件）、若干说明与示例脚本。
 
@@ -188,7 +140,7 @@ WasmCrypt 提供一套从模型到受保护 Wasm 的完整流程：包含模型�
 
 * * *
 
-5. 编译（概要）
+5. 编译
 
 ---------
 
@@ -196,10 +148,19 @@ WasmCrypt 提供一套从模型到受保护 Wasm 的完整流程：包含模型�
 
 1. 确保 EMSDK 已安装并激活（`source ./emsdk_env.sh` / Windows 对应命令）。
 
-2. 运行仓库中的 Emscripten 编译脚本（示例）：
-   `# 假设项目提供了脚本 scripts/build_wasm.sh 或类似脚本 bash scripts/build_wasm.sh`
+2. 系统自动调用运行运行仓库中的 Emscripten 编译脚本（示例）：
    
-   > 如果项目没有命名一致的脚本，请查看 `scripts/` 或 README 中的具体编译脚本文件并执行。编译脚本会调用 `emcc` 并输出 `.wasm` 与配套 `.js`。
+   ```bash
+       @REM emcc -lembind -o decode_rsa.js decode_rsa.cpp -O3
+   
+       @REM emcc -lembind -o decode.js decode.cpp -O3
+   
+       emcc -lembind -o cat_dog.js cat_dog.cpp feistel_crypto.cpp -Oz -s ALLOW_MEMORY_GROWTH=1
+   ```
+   
+   
+   
+   
 
 * * *
 
@@ -217,12 +178,15 @@ WasmCrypt 提供一套从模型到受保护 Wasm 的完整流程：包含模型�
    * 使用 Python UI（若项目有 `ui.py` 或等效入口）:
      `python ui.py`
    
-   * 或者使用打包好的可执行文件（Windows `.exe`）: 双击或从命令行启动 `dist/your_app.exe`。
+   * 或者使用打包好的可执行文件（Windows `.exe`）: 双击或从命令行启动 `dist/WAMO.exe`。
 
-3. **在界面中选择“输出混洗后的 Wasm”**  
-   在 UI/EXE 中选择对应按钮或选项（你描述的流程是：先按一个键输出混洗后的 wasm），程序会把混淆处理后的 Wasm/JS 输出到某个目录（例如 `model/` 下或 `output/` 下，具体以项目实际输出路径为准）。
+3. **在界面中选择要转换的模型文件以及对应框架****
+   输入训练完的模型文件，支持.h5文件，.pth文件，.onnx文件。
 
-4. **部署到前端并运行**
+4. **  点击”生成cpp“，“导出为WASM”，“二进制混淆按钮”
+   在 UI/EXE 中选择对应按钮或选项，首先选择，程序会把混淆前和混淆处理后的 Wasm/JS 输出到model目录下
+
+5. **部署到前端并运行**
    
    * 将生成的 `.wasm` 与配套 `.js`（在 `model/` 中或输出目录）**复制到** `web/<对应模型文件夹>/` 下。
      在该 `web/<model-folder>/` 目录启动静态服务器：
@@ -278,18 +242,19 @@ http-server ./web/mnist_example -p 8080
 3. **调用推理接口**：通过 `Module.predict` 将输入数据传入模型，获取预测结果。
 
 4. **释放内存**：使用 `Module.freeImage` 释放临时分配的内存。
-
-    <script>
+   
+   ```javascript
+   <script>
         var Module = {
             onRuntimeInitialized: function () {
                 console.log("Wasm 模块已加载，可以调用推理函数");
             }
         };
-    
+   
         async function runInference(imageData) {
             // 1. 创建输入数据容器 (200x200x3)
             var data = Module['createImage'](200, 200, 3);
-    
+   
             // 2. 填充像素数据 (归一化到 [0, 1])
             for (var i = 0; i < 200; i++) {
                 for (var j = 0; j < 200; j++) {
@@ -299,25 +264,24 @@ http-server ./web/mnist_example -p 8080
                     }
                 }
             }
-    
+   
             // 3. 调用推理函数
             var result = Module['predict'](data);
-    
+   
             // 4. 解析输出结果
             if (result == 0) {
                 console.log("预测结果: 猫");
             } else {
                 console.log("预测结果: 狗");
             }
-    
+   
             // 5. 释放内存
             Module['freeImage'](data);
         }
-    </script>
-
-
-
-* * *
+    </script> 
+   ```
+   
+   
 
 9.常见问题与排查建议
 
@@ -342,3 +306,5 @@ http-server ./web/mnist_example -p 8080
 * `model/` 中同时包含原始示例模型与模型转换后生成的 Wasm/JS，可作为部署前的参考。
 
 * 将生成文件复制到 `web` 对应的模型文件夹下后，通过任意静态服务器（如 `http-server` 或 `python -m http.server`）启动即可进行网页端验证。
+
+

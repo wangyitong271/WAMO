@@ -7,7 +7,8 @@ from datetime import datetime
 
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QApplication, QWidget, QComboBox, QPushButton, QGridLayout, QLabel, QFileDialog, QLineEdit, \
-    QMessageBox, QRadioButton, QVBoxLayout, QGroupBox, QHBoxLayout
+    QMessageBox, QRadioButton, QVBoxLayout, QGroupBox, QHBoxLayout, QCheckBox
+
 
 # 导入模型处理器
 from model_handler import ModelHandler
@@ -32,39 +33,33 @@ from confuse.wasm_obfuscator.fake_decryption_obfuscation import add_simple_start
 class App(QWidget):
     def __init__(self):
         super().__init__()
-        # 初始化模型处理器
         self.model_handler = ModelHandler(ui_callback=self.ui_callback)
-        self.current_model_path = None  # 保存当前选择的模型文件完整路径
+        self.current_model_path = None
         self.initUI()
-
-        # 设置窗口大小
         self.resize(520, 620)
 
     def ui_callback(self, action):
-        """UI回调函数，用于ModelHandler与UI的交互"""
         if action == 'disable_buttons':
             self.disable_button()
         elif action == 'enable_buttons':
             self.enable_button()
 
     def initUI(self):
-        # 设置统一字体
         font = QFont()
         font.setPointSize(16)
-        
+
         # === 模型部分 ===
         self.labelSelectModel = QLabel('选择模型', self)
         self.labelSelectModel.setFont(font)
 
-        # 创建模型选择对话框
         self.lineEdit = QLineEdit(self)
-        self.lineEdit.setReadOnly(True)  # 设置为只读，用户不能直接在文本框中输入
-        self.lineEdit.mousePressEvent = self.open_model_file_dialog  # 当点击文本框时，打开文件对话框
+        self.lineEdit.setReadOnly(True)
+        self.lineEdit.mousePressEvent = self.open_model_file_dialog
         self.lineEdit.setFont(font)
 
         self.labelFramework = QLabel('模型框架', self)
         self.labelFramework.setFont(font)
-        
+
         self.comboBoxFramework = QComboBox(self)
         self.comboBoxFramework.addItems(["Keras", "TensorFlow", "PyTorch", "Scikit-learn"])
         self.comboBoxFramework.setFont(font)
@@ -72,57 +67,49 @@ class App(QWidget):
         # === WASM文件部分 ===
         self.labelSelectWasm = QLabel('WASM文件', self)
         self.labelSelectWasm.setFont(font)
-        
-        # 创建WASM文件选择框
+
         self.wasmFileEdit = QLineEdit(self)
         self.wasmFileEdit.setReadOnly(True)
         self.wasmFileEdit.setFont(font)
-        
-        # 浏览按钮
+
         self.buttonBrowseWasm = QPushButton('浏览...', self)
         self.buttonBrowseWasm.setFont(font)
         self.buttonBrowseWasm.clicked.connect(self.open_wasm_file_dialog)
-        
-        # 创建二进制混淆的单选按钮组
+
+        # === 二进制混淆选项部分（修改为多选框） ===
         self.obfuscationGroup = QGroupBox("二进制混淆选项")
         self.obfuscationGroup.setFont(font)
-        
         vbox = QVBoxLayout()
-        
-        # 使用单选按钮而非多选框
-        self.radioTypeObfuscation = QRadioButton("虚拟算子注入", self)
+
+        self.radioTypeObfuscation = QCheckBox("虚假算子注入", self)
         self.radioTypeObfuscation.setFont(font)
-        self.radioTypeObfuscation.setChecked(True)  # 默认选中第一个
-        
-        self.radioFunctionObfuscation = QRadioButton("函数混淆", self)
+
+        self.radioFunctionObfuscation = QCheckBox("虚假权重注入", self)
         self.radioFunctionObfuscation.setFont(font)
-        
-        self.radioCustomSectionObfuscation = QRadioButton("元数据混淆", self)
+
+        self.radioCustomSectionObfuscation = QCheckBox("元数据混淆", self)
         self.radioCustomSectionObfuscation.setFont(font)
-        
-        # 添加控制流混淆选项
-        self.radioControlFlowObfuscation = QRadioButton("算子执行路径扰动", self)
+
+        self.radioControlFlowObfuscation = QCheckBox("算子执行路径扰动", self)
         self.radioControlFlowObfuscation.setFont(font)
-        
-        # 添加新的混淆选项
-        self.radioIndirectCallObfuscation = QRadioButton("算子分派索引", self)
+
+        self.radioIndirectCallObfuscation = QCheckBox("算子分派索引", self)
         self.radioIndirectCallObfuscation.setFont(font)
-        
-        self.radioStack1Obfuscation = QRadioButton("中间计算混淆", self)
+
+        self.radioStack1Obfuscation = QCheckBox("中间计算混淆", self)
         self.radioStack1Obfuscation.setFont(font)
-        
-        self.radioStack2Obfuscation = QRadioButton("算子决策扰动", self)
+
+        self.radioStack2Obfuscation = QCheckBox("算子决策扰动", self)
         self.radioStack2Obfuscation.setFont(font)
-        
-        # 添加假解密混淆选项
-        self.radioFakeDecryptionObfuscation = QRadioButton("伪装解密混淆", self)
+
+        self.radioFakeDecryptionObfuscation = QCheckBox("伪装解密混淆", self)
         self.radioFakeDecryptionObfuscation.setFont(font)
-        
-        # 添加数据段混淆选项
-        self.radioDataSectionObfuscation = QRadioButton("虚拟权重注入", self)
+
+        self.radioDataSectionObfuscation = QCheckBox("虚假权重注入", self)
         self.radioDataSectionObfuscation.setFont(font)
         self.radioDataSectionObfuscation.setVisible(False)
-        
+
+        # 加入布局
         vbox.addWidget(self.radioTypeObfuscation)
         vbox.addWidget(self.radioFunctionObfuscation)
         vbox.addWidget(self.radioCustomSectionObfuscation)
@@ -132,51 +119,42 @@ class App(QWidget):
         vbox.addWidget(self.radioStack2Obfuscation)
         vbox.addWidget(self.radioFakeDecryptionObfuscation)
         vbox.addWidget(self.radioDataSectionObfuscation)
+
         self.obfuscationGroup.setLayout(vbox)
-        
-        # === 按钮部分 ===
-        # 创建按钮
+
+        # === 按钮区域 ===
         self.buttonCpp = QPushButton('生成 CPP', self)
         self.buttonWasm = QPushButton('导出为 WASM', self)
-        self.buttonBinaryObfuscate = QPushButton('二进制混淆', self)  # 二进制混淆按钮
-        
-        # 设置字体
+        self.buttonBinaryObfuscate = QPushButton('二进制混淆', self)
+
         self.buttonCpp.setFont(font)
         self.buttonWasm.setFont(font)
         self.buttonBinaryObfuscate.setFont(font)
-        
-        # 设置按钮点击信号
+
         self.buttonCpp.clicked.connect(self.generate_cpp)
         self.buttonWasm.clicked.connect(self.export_wasm)
         self.buttonBinaryObfuscate.clicked.connect(self.binary_obfuscate_wasm)
 
-        # 创建网格布局并添加组件
         grid = QGridLayout()
-        
-        # 模型部分布局
         grid.addWidget(self.labelSelectModel, 0, 0)
         grid.addWidget(self.lineEdit, 0, 1, 1, 2)
 
         grid.addWidget(self.labelFramework, 1, 0)
         grid.addWidget(self.comboBoxFramework, 1, 1, 1, 2)
-        
-        # WASM文件部分布局
+
         grid.addWidget(self.labelSelectWasm, 2, 0)
         grid.addWidget(self.wasmFileEdit, 2, 1)
         grid.addWidget(self.buttonBrowseWasm, 2, 2)
 
-        # 添加二进制混淆选项组
         grid.addWidget(self.obfuscationGroup, 3, 0, 1, 3)
-        
-        # 按钮布局
+
         buttonLayout = QHBoxLayout()
         buttonLayout.addWidget(self.buttonCpp)
         buttonLayout.addWidget(self.buttonWasm)
         buttonLayout.addWidget(self.buttonBinaryObfuscate)
-        
+
         grid.addLayout(buttonLayout, 4, 0, 1, 3)
 
-        # 设置布局
         self.setLayout(grid)
         self.setWindowTitle('WASM 生成工具')
         self.show()
@@ -405,15 +383,15 @@ class App(QWidget):
             
             elif obfuscation_type == "function":
                 # 函数混淆
-                print("执行函数混淆...")
+                print("执行虚假权重注入...")
                 try:
                     success = obfuscate_wasm_functions(output_wasm, output_wasm, num_funcs, complexity)
                     if success:
-                        print(f"函数混淆成功: {output_wasm}")
+                        print(f"虚假权重注入成功: {output_wasm}")
                     else:
-                        print("函数混淆失败")
+                        print("虚假权重注入失败")
                 except Exception as e:
-                    print(f"函数混淆出错: {str(e)}")
+                    print(f"虚假权重注入出错: {str(e)}")
             
             elif obfuscation_type == "custom":
                 # 自定义段混淆
